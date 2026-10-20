@@ -1,0 +1,10 @@
+numpy>=1.24
+scipy>=1.10
+# Prefer OpenCV 4.x (has cv2.calibrateHandEye). OpenCV 5 wheels may lack it;
+# rs_calib falls back to SVD AX=XB in that case.
+opencv-python>=4.8,<5
+PyYAML>=6.0
+PyQt5>=5.15
+# Optional on target PC with RealSense:
+# pyrealsense2
+# sensors stack (via vendor symlink / editable install)

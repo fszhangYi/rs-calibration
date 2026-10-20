@@ -32,8 +32,9 @@ logs/
 configs/local.yaml
 configs/user.yaml
 
-# Vendor symlink target not committed as copy
-# (symlink vendor/sensors is OK; do not commit nested sensors tree contents as duplicates)
+# Local sensors soft-link (absolute path differs per machine)
+vendor/sensors
+vendor/sensors/
 
 # Media / temp
 *.mp4
