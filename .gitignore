@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# App runtime
+sessions/
+logs/
+*.log
+configs/local.yaml
+configs/user.yaml
+
+# Vendor symlink target not committed as copy
+# (symlink vendor/sensors is OK; do not commit nested sensors tree contents as duplicates)
+
+# Media / temp
+*.mp4
+*.avi
+*.pkl
+tmp/
+.ipynb_checkpoints/
