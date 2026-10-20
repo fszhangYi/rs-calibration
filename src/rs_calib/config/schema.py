@@ -119,7 +119,12 @@ def app_config_from_dict(data: dict[str, Any]) -> AppConfig:
 
 
 def resolve_config_path(path: Optional[str | Path] = None) -> Path:
+    import os
+
     if path is not None:
         return Path(path)
+    env = (os.environ.get("RS_CALIB_CONFIG") or "").strip()
+    if env:
+        return Path(env)
     here = Path(__file__).resolve().parents[3]
     return here / "configs" / "default.yaml"

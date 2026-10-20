@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RS Eye-to-Hand 标定</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --line: #2a3542;
+      --text: #e7eef6;
+      --muted: #8b9aab;
+      --accent: #3db8a0;
+      --danger: #d65a5a;
+      --fs: 12px;
+      --fs-sm: 11px;
+      --fs-title: 13px;
+      --pad: 8px;
+      --gap: 6px;
+      --r: 8px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+    body {
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+      font-size: var(--fs);
+      line-height: 1.35;
+      background: radial-gradient(900px 420px at 8% -8%, #1a3a36 0%, transparent 50%),
+                  radial-gradient(700px 380px at 100% 0%, #243048 0%, transparent 45%),
+                  var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      flex: 0 0 auto;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 32px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    header .meta {
+      color: var(--muted);
+      font-size: var(--fs-sm);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    main {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(260px, 22vw) minmax(0, 1fr) minmax(240px, 20vw);
+      gap: var(--gap);
+      padding: var(--gap);
+      max-width: none;
+      width: 100%;
+    }
+    .card {
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      padding: var(--pad);
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .card.preview-card {
+      overflow: hidden;
+    }
+    .card h2 {
+      margin: 4px 0 2px;
+      font-size: var(--fs-title);
+      color: var(--accent);
+      font-weight: 600;
+      flex: 0 0 auto;
+    }
+    .card h2:first-child { margin-top: 0; }
+    .meta {
+      color: var(--muted);
+      font-size: var(--fs-sm);
+      line-height: 1.3;
+      word-break: break-all;
+    }
+    .row {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 0;
+      flex: 0 0 auto;
+    }
+    button, select, input {
+      font-family: inherit;
+      font-size: var(--fs);
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #121820;
+      color: var(--text);
+      padding: 3px 7px;
+      height: 26px;
+    }
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #243040, #1a222c);
+      white-space: nowrap;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: #1e4a42; border-color: var(--accent); }
+    button.danger { border-color: var(--danger); color: #ffd0d0; }
+    select, input { flex: 1; min-width: 0; }
+    #camList {
+      width: 100%;
+      height: 54px;
+      margin: 0;
+      font-size: var(--fs-sm);
+      padding: 2px;
+    }
+    #preview {
+      width: 100%;
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
+      background: #000;
+      border-radius: 6px;
+      object-fit: contain;
+      border: 1px solid var(--line);
+    }
+    .grid-jog {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 3px;
+      flex: 0 0 auto;
+    }
+    .grid-jog button {
+      padding: 2px 4px;
+      font-size: var(--fs-sm);
+      height: 24px;
+    }
+    #log {
+      flex: 1 1 auto;
+      min-height: 48px;
+      max-height: none;
+      overflow: auto;
+      font-family: "JetBrains Mono", "Consolas", ui-monospace, monospace;
+      font-size: 10px;
+      line-height: 1.35;
+      color: var(--muted);
+      background: #0c1015;
+      border-radius: 6px;
+      padding: 6px;
+      white-space: pre-wrap;
+    }
+    .pill {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .pill.on { color: var(--accent); border-color: var(--accent); }
+    label.chk {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: var(--fs);
+      white-space: nowrap;
+    }
+    label.chk input { width: auto; height: auto; padding: 0; }
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 10px;
+    }
+    @media (max-width: 1100px) {
+      html, body { overflow: auto; }
+      main {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      #preview { min-height: 280px; flex: none; height: 40vh; }
+      #log { height: 100px; flex: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RS Eye-to-Hand 标定</h1>
+    <span class="meta" id="health">…</span>
+  </header>
+  <main>
+    <section class="card">
+      <h2>相机</h2>
+      <div class="row">
+        <button class="primary" onclick="scanCams()">扫描</button>
+        <button onclick="openCam()">开流</button>
+        <button onclick="closeCam()">关流</button>
+      </div>
+      <select id="camList" size="3"></select>
+      <div id="intr" class="meta">内参: —</div>
+
+      <h2>机械臂</h2>
+      <div class="row">
+        <input id="armIp" placeholder="机器人 IP" />
+        <button class="primary" onclick="connectArm()">连接</button>
+        <button onclick="disconnectArm()">断开</button>
+      </div>
+      <div class="row">
+        <button onclick="armOn()">Arm</button>
+        <button onclick="armOff()">Disarm</button>
+        <button class="danger" onclick="armStop()">Stop</button>
+      </div>
+      <div id="armState" class="meta">臂状态: —</div>
+      <p class="hint">点动幅度</p>
+      <div class="row">
+        <input id="jogJointDeg" type="number" min="0.01" max="30" step="0.1" title="关节步进 °" />
+        <span class="hint">°关节</span>
+        <input id="jogCartMm" type="number" min="0.01" max="100" step="0.5" title="平移步进 mm" />
+        <span class="hint">mm平移</span>
+      </div>
+      <div class="row">
+        <input id="jogCartDeg" type="number" min="0.01" max="30" step="0.1" title="姿态步进 °" />
+        <span class="hint">°姿态</span>
+        <select id="cartFrame" title="笛卡尔参考系" style="flex:0 0 auto;width:88px">
+          <option value="flange">flange</option>
+          <option value="tcp">tcp</option>
+        </select>
+        <button class="primary" onclick="saveJogSteps()">应用步进</button>
+      </div>
+      <p class="hint">关节点动</p>
+      <div class="grid-jog" id="jointJog"></div>
+      <p class="hint">笛卡尔点动</p>
+      <div class="grid-jog" id="cartJog"></div>
+    </section>
+
+    <section class="card preview-card">
+      <h2>预览</h2>
+      <img id="preview" alt="preview" src="/api/stream.mjpeg" />
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="liveCb" onchange="toggleLive()" /> 实时计算</label>
+        <button class="primary" onclick="recStart()">开始录制</button>
+        <button onclick="recStop()">停止录制</button>
+        <button onclick="exportLive()">导出外参</button>
+      </div>
+      <div id="session" class="meta">session: —</div>
+    </section>
+
+    <section class="card">
+      <h2>状态</h2>
+      <div class="row">
+        <span class="pill" id="pillCam">相机</span>
+        <span class="pill" id="pillArm">臂</span>
+        <span class="pill" id="pillRec">录制</span>
+        <span class="pill" id="pillLive">实时</span>
+      </div>
+      <div id="liveStat" class="meta">标定: —</div>
+      <h2>离线 / tcp</h2>
+      <div class="row">
+        <input id="offlinePath" placeholder="session 目录" />
+        <button onclick="runOffline()">运行</button>
+      </div>
+      <div class="row">
+        <input id="tcpX" type="number" step="0.01" value="0" title="x" />
+        <input id="tcpY" type="number" step="0.01" value="0" title="y" />
+        <input id="tcpZ" type="number" step="0.01" value="0.18" title="z" />
+        <button onclick="saveTcp()">tcp</button>
+      </div>
+      <h2>日志</h2>
+      <div id="log"></div>
+    </section>
+  </main>
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      logEl.textContent += msg + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    async function api(path, opts={}) {
+      const r = await fetch(path, {
+        headers: {'Content-Type': 'application/json'},
+        ...opts,
+      });
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = {detail: text}; }
+      if (!r.ok) throw new Error(data.detail || JSON.stringify(data));
+      return data;
+    }
+    function setPill(id, on) {
+      document.getElementById(id).classList.toggle('on', !!on);
+    }
+
+    const jg = document.getElementById('jointJog');
+    for (let i = 0; i < 6; i++) {
+      for (const s of [-1, 1]) {
+        const b = document.createElement('button');
+        b.textContent = `J${i+1}${s>0?'+':'-'}`;
+        b.onclick = () => api('/api/arm/jog_joint', {method:'POST', body: JSON.stringify({joint:i, sign:s})})
+          .then(()=>log(`jog J${i+1}`)).catch(e=>log('ERR '+e.message));
+        jg.appendChild(b);
+      }
+    }
+    const cg = document.getElementById('cartJog');
+    for (const ax of ['x','y','z','rx','ry','rz']) {
+      for (const s of [-1, 1]) {
+        const b = document.createElement('button');
+        b.textContent = `${ax.toUpperCase()}${s>0?'+':'-'}`;
+        b.onclick = () => api('/api/arm/jog_cart', {method:'POST', body: JSON.stringify({axis:ax, sign:s})})
+          .then(()=>log(`jog ${ax}`)).catch(e=>log('ERR '+e.message));
+        cg.appendChild(b);
+      }
+    }
+
+    async function refreshHealth() {
+      try {
+        const h = await api('/api/health');
+        document.getElementById('health').textContent =
+          `v${h.version} · cam=${h.camera_open} · arm=${h.arm_connected} · armed=${h.armed}`;
+        setPill('pillCam', h.camera_open);
+        setPill('pillArm', h.arm_connected);
+        setPill('pillRec', h.recording);
+        setPill('pillLive', h.live);
+      } catch (e) { document.getElementById('health').textContent = e.message; }
+      try {
+        const ls = await api('/api/live/status');
+        document.getElementById('liveStat').textContent =
+          `标定 n=${ls.n_samples} ${ls.converged?'收敛':'未收敛'} Δt=${ls.delta_t_mm ?? '-'} ΔR=${ls.delta_R_deg ?? '-'}`;
+      } catch {}
+      try {
+        const st = await api('/api/arm/state');
+        if (st.connected) {
+          document.getElementById('armState').textContent =
+            `${st.armed?'Armed':'Connected'} ${st.endpoint} | ${(st.pose_xyzrpy||[]).map(x=>x.toFixed(3)).join(',')}`;
+        }
+      } catch {}
+    }
+
+    async function scanCams() {
+      const list = await api('/api/cameras');
+      const sel = document.getElementById('camList');
+      sel.innerHTML = '';
+      list.forEach(d => {
+        const o = document.createElement('option');
+        o.value = d.serial;
+        o.textContent = `${d.serial} | ${d.name}`;
+        sel.appendChild(o);
+      });
+      log(`扫描 ${list.length} 台`);
+    }
+    async function openCam() {
+      const serial = document.getElementById('camList').value;
+      if (!serial) return log('请选择相机');
+      const r = await api('/api/camera/open', {method:'POST', body: JSON.stringify({serial})});
+      const i = r.intrinsics;
+      document.getElementById('intr').textContent =
+        `fx=${i.fx.toFixed(1)} fy=${i.fy.toFixed(1)} cx=${i.cx.toFixed(1)} cy=${i.cy.toFixed(1)}`;
+      document.getElementById('preview').src = '/api/stream.mjpeg?' + Date.now();
+      log('开流 ' + serial);
+      refreshHealth();
+    }
+    async function closeCam() {
+      await api('/api/camera/close', {method:'POST'});
+      log('关流');
+      refreshHealth();
+    }
+    async function connectArm() {
+      const ip = document.getElementById('armIp').value.trim();
+      const r = await api('/api/arm/connect', {method:'POST', body: JSON.stringify({robot_ip: ip || null})});
+      log('连接 ' + r.endpoint);
+      refreshHealth();
+    }
+    async function disconnectArm() {
+      await api('/api/arm/disconnect', {method:'POST'});
+      log('断开');
+      refreshHealth();
+    }
+    async function armOn() { await api('/api/arm/arm', {method:'POST'}); log('Arm'); refreshHealth(); }
+    async function armOff() { await api('/api/arm/disarm', {method:'POST'}); log('Disarm'); refreshHealth(); }
+    async function armStop() { await api('/api/arm/stop', {method:'POST'}); log('Stop'); refreshHealth(); }
+    async function toggleLive() {
+      const on = document.getElementById('liveCb').checked;
+      await api('/api/live?enabled=' + on, {method:'POST'});
+      log('实时 ' + on);
+      refreshHealth();
+    }
+    async function recStart() {
+      const r = await api('/api/record/start', {method:'POST'});
+      document.getElementById('session').textContent = 'session: ' + r.session;
+      log('录制 ' + r.session);
+      refreshHealth();
+    }
+    async function recStop() {
+      const r = await api('/api/record/stop', {method:'POST'});
+      log('停止 ' + r.session);
+      refreshHealth();
+    }
+    async function exportLive() {
+      const r = await api('/api/live/export', {method:'POST'});
+      log('导出 ' + r.path);
+    }
+    async function runOffline() {
+      const p = document.getElementById('offlinePath').value.trim();
+      const r = await api('/api/offline', {method:'POST', body: JSON.stringify({session_dir: p})});
+      log('离线 ' + r.extrinsics_path + ' n=' + r.n_samples);
+    }
+    async function saveTcp() {
+      const tcp_xyz = [
+        +document.getElementById('tcpX').value,
+        +document.getElementById('tcpY').value,
+        +document.getElementById('tcpZ').value,
+      ];
+      await api('/api/tcp', {method:'POST', body: JSON.stringify({tcp_xyz})});
+      log('tcp=' + tcp_xyz);
+    }
+    async function saveJogSteps() {
+      const body = {
+        jog_joint_step_deg: +document.getElementById('jogJointDeg').value,
+        jog_cart_step_m: +document.getElementById('jogCartMm').value / 1000.0,
+        jog_cart_step_deg: +document.getElementById('jogCartDeg').value,
+        cart_frame: document.getElementById('cartFrame').value,
+      };
+      const r = await api('/api/jog_steps', {method:'POST', body: JSON.stringify(body)});
+      log(`步进 关节${r.jog_joint_step_deg}° 平移${(r.jog_cart_step_m*1000).toFixed(2)}mm 姿态${r.jog_cart_step_deg}° frame=${r.cart_frame}`);
+    }
+    function fillJogSteps(arm) {
+      document.getElementById('jogJointDeg').value = arm.jog_joint_step_deg;
+      document.getElementById('jogCartMm').value = +(arm.jog_cart_step_m * 1000).toFixed(3);
+      document.getElementById('jogCartDeg').value = arm.jog_cart_step_deg;
+      document.getElementById('cartFrame').value = arm.cart_frame || 'flange';
+    }
+    async function boot() {
+      const c = await api('/api/config');
+      document.getElementById('armIp').value = c.arm.robot_ip;
+      document.getElementById('tcpX').value = c.tcp_xyz[0];
+      document.getElementById('tcpY').value = c.tcp_xyz[1];
+      document.getElementById('tcpZ').value = c.tcp_xyz[2];
+      fillJogSteps(c.arm);
+      refreshHealth();
+      setInterval(refreshHealth, 1500);
+    }
+    boot().catch(e => log('boot ERR ' + e.message));
+  </script>
+</body>
+</html>

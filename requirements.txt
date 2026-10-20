@@ -5,6 +5,8 @@ scipy>=1.10
 opencv-python>=4.8,<5
 PyYAML>=6.0
 PyQt5>=5.15
+fastapi>=0.110
+uvicorn[standard]>=0.27
 # Optional on target PC with RealSense:
 # pyrealsense2
 # sensors stack (via vendor symlink / editable install)

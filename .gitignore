@@ -36,6 +36,16 @@ configs/user.yaml
 vendor/sensors
 vendor/sensors/
 
+# Desktop packaging
+release/
+.tools/
+.wine-rs-calib/
+.wine-*/
+packaging/dist*/
+/tmp/rs-calib-*
+frontend/dist/
+*.spec.bak
+
 # Media / temp
 *.mp4
 *.avi

@@ -26,7 +26,16 @@ export PYTHONPATH="src:vendor:${PYTHONPATH}"
 pip install -r requirements.txt
 # 实机另需: pip install pyrealsense2  以及 elite/elirobots（经 sensors）
 
+# 桌面 PyQt
 python -m rs_calib
+
+# Web 前端（默认 0.0.0.0:6006，AutoDL 可映射该端口）
+python -m rs_calib web
+# 或: python -m rs_calib.web.server
+
+# Windows 桌面包（Linux 主机经 Wine 交叉打包，Scheme A 适配）
+bash scripts/build-desktop.sh --target windows
+# 产物：release/rs-calib-desktop-windows-x64-<ts>/ 与同名 .zip
 ```
 
 ## 功能概览
