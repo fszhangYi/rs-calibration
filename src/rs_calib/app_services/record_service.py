@@ -80,6 +80,10 @@ class RecordService:
                 incomplete=True,
                 frame_count=0,
                 T_flange_marker=self.cfg.aruco.T_flange_marker,
+                handeye={
+                    "setup": getattr(self.cfg.handeye, "setup", "eye_to_hand"),
+                    "method": self.cfg.handeye.method,
+                },
             )
             session_store.write_meta(session, meta)
             self.session_dir = session

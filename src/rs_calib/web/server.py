@@ -67,6 +67,11 @@ class OfflineBody(BaseModel):
     session_dir: str
 
 
+class HandeyeSetupBody(BaseModel):
+    setup: str = "eye_to_hand"
+    method: Optional[str] = None
+
+
 class MatrixPlanBody(BaseModel):
     nx: Optional[int] = None
     ny: Optional[int] = None
@@ -224,7 +229,26 @@ def create_app() -> FastAPI:
                 "marker_id": cfg.aruco.marker_id,
                 "marker_length_m": cfg.aruco.marker_length_m,
             },
+            "handeye": {
+                "setup": getattr(cfg.handeye, "setup", "eye_to_hand"),
+                "method": cfg.handeye.method,
+                "compare_methods": cfg.handeye.compare_methods,
+            },
         }
+
+    @app.post("/api/handeye/setup")
+    def set_handeye_setup(body: HandeyeSetupBody) -> dict:
+        from rs_calib.domain.handeye import normalize_setup
+
+        try:
+            setup = normalize_setup(body.setup)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        cfg.handeye.setup = setup
+        if body.method:
+            cfg.handeye.method = str(body.method).strip().upper() or cfg.handeye.method
+        live.reset()
+        return {"ok": True, "setup": cfg.handeye.setup, "method": cfg.handeye.method}
 
     @app.post("/api/tcp")
     def set_tcp(body: TcpBody) -> dict:
@@ -489,7 +513,9 @@ def create_app() -> FastAPI:
             "delta_R_deg": st.delta_R_deg if st else None,
             "stable_streak": st.stable_streak if st else 0,
             "method": r.method if r else None,
+            "setup": getattr(r, "setup", None) if r else getattr(cfg.handeye, "setup", "eye_to_hand"),
             "T_base_cam": r.T_base_cam.tolist() if r else None,
+            "T_flange_cam": r.T_flange_cam.tolist() if r and r.T_flange_cam is not None else None,
         }
 
     @app.post("/api/live/export")
@@ -520,6 +546,7 @@ def create_app() -> FastAPI:
                 "results": [
                     {
                         "camera_serial": one["camera_serial"],
+                        "setup": getattr(one["result"], "setup", "eye_to_hand"),
                         "method": one["result"].method,
                         "n_samples": one["result"].n_samples,
                         "extrinsics_path": one["extrinsics_path"],
@@ -534,10 +561,11 @@ def create_app() -> FastAPI:
             raise HTTPException(400, str(res.error))
         data = res.value
         r = data["result"]
-        return {
+        out = {
             "ok": True,
             "multi_camera": False,
             "camera_serial": data.get("camera_serial"),
+            "setup": getattr(r, "setup", "eye_to_hand"),
             "method": r.method,
             "n_samples": r.n_samples,
             "extrinsics_path": data["extrinsics_path"],
@@ -545,6 +573,11 @@ def create_app() -> FastAPI:
             "T_base_cam": r.T_base_cam.tolist(),
             "filter_report": data["report"].__dict__,
         }
+        if getattr(r, "T_flange_cam", None) is not None:
+            out["T_flange_cam"] = r.T_flange_cam.tolist()
+        if getattr(r, "T_cam_flange", None) is not None:
+            out["T_cam_flange"] = r.T_cam_flange.tolist()
+        return out
 
     @app.get("/api/stream.mjpeg")
     def stream_mjpeg() -> StreamingResponse:

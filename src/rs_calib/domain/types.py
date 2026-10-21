@@ -91,6 +91,16 @@ class ExtrinsicsResult:
     n_samples: int
     used_indices: list[int] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)
+    # eye_to_hand | eye_in_hand — primary matrix differs by setup
+    setup: str = "eye_to_hand"
+    T_flange_cam: Optional[np.ndarray] = None
+    T_cam_flange: Optional[np.ndarray] = None
+
+    def primary_T(self) -> np.ndarray:
+        """Extrinsic used for convergence / display for the active setup."""
+        if self.setup == "eye_in_hand" and self.T_flange_cam is not None:
+            return self.T_flange_cam
+        return self.T_base_cam
 
 
 @dataclass

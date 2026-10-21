@@ -43,6 +43,7 @@ class OfflineDialog(QDialog):
         layout.addWidget(self.log)
         layout.addWidget(
             QLabel(
+                "按当前 handeye.setup 求解（眼在手外→T_base_cam，眼在手上→T_flange_cam）。\n"
                 "单相机 → session/extrinsics.json；"
                 "多相机 → cameras/<serial>/extrinsics.json 与 extrinsics_<serial>.json"
             )
@@ -88,7 +89,12 @@ class OfflineDialog(QDialog):
                 self.log.append(f"写出: {data['extrinsics_path']}")
                 for w in data.get("warnings") or []:
                     self.log.append(f"警告: {w}")
-                self.log.append(f"T_base_cam:\n{r.T_base_cam}")
+                setup = getattr(r, "setup", "eye_to_hand")
+                self.log.append(f"setup={setup}")
+                if setup == "eye_in_hand" and getattr(r, "T_flange_cam", None) is not None:
+                    self.log.append(f"T_flange_cam:\n{r.T_flange_cam}")
+                else:
+                    self.log.append(f"T_base_cam:\n{r.T_base_cam}")
             else:
                 self.log.append(str(result.error))
             return
@@ -102,8 +108,9 @@ class OfflineDialog(QDialog):
         for one in data["results"]:
             r = one["result"]
             rep = one["report"]
+            setup = getattr(r, "setup", "eye_to_hand")
             self.log.append(
-                f"  ✓ [{one['camera_serial']}] method={r.method} n={r.n_samples} "
+                f"  ✓ [{one['camera_serial']}] setup={setup} method={r.method} n={r.n_samples} "
                 f"selected={rep.n_selected} → {one['extrinsics_path']}"
             )
             for w in one.get("warnings") or []:

@@ -87,7 +87,11 @@ class LiveCalibService:
         if len(self.samples) >= 3 and self._since_recompute >= n:
             self._since_recompute = 0
             try:
-                result = solve_handeye(self.samples, method=self.cfg.handeye.method)
+                result = solve_handeye(
+                    self.samples,
+                    method=self.cfg.handeye.method,
+                    setup=getattr(self.cfg.handeye, "setup", "eye_to_hand"),
+                )
                 status = self.tracker.update(result)
                 result.metrics["convergence"] = {
                     "delta_t_mm": status.delta_t_mm,

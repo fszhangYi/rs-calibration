@@ -1,6 +1,9 @@
 # rs-calibration
 
-场景相机 Eye-to-Hand 外参标定上位机（Windows / PyQt，依赖 `sensors` SDK）。
+手眼外参标定上位机（Eye-to-Hand / Eye-in-Hand；Windows / PyQt，依赖 `sensors` SDK）。
+
+- **眼在手外**：场景相机固定 → 求解 `T_base_cam`
+- **眼在手上**：腕部相机随法兰 → 求解 `T_flange_cam`（配置 `handeye.setup`）
 
 ## 文档
 

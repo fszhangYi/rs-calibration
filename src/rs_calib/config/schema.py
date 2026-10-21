@@ -41,6 +41,8 @@ class ArucoSection:
 
 @dataclass
 class HandeyeSection:
+    # eye_to_hand (场景相机) | eye_in_hand (腕部相机)
+    setup: str = "eye_to_hand"
     method: str = "TSAI"
     compare_methods: bool = False
 

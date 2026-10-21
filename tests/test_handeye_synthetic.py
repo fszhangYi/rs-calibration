@@ -1,4 +1,4 @@
-"""Synthetic eye-to-hand recovery test (nails OpenCV input convention)."""
+"""Synthetic eye-to-hand / eye-in-hand recovery tests (OpenCV input convention)."""
 
 from __future__ import annotations
 
@@ -35,7 +35,43 @@ def test_handeye_recovers_T_base_cam():
             )
         )
 
-    result = solve_handeye(samples, method="TSAI")
+    result = solve_handeye(samples, method="TSAI", setup="eye_to_hand")
+    assert result.setup == "eye_to_hand"
     dt, dR = se3_delta(result.T_base_cam, T_base_cam_gt)
     assert dt < 1.0, f"translation error {dt} mm"
     assert dR < 0.1, f"rotation error {dR} deg"
+
+
+def test_handeye_recovers_T_flange_cam():
+    rng = np.random.default_rng(7)
+    T_flange_cam_gt = _rand_T(rng)
+    T_base_marker = _rand_T(rng)  # board fixed in base
+    T_cam_flange = inv_T(T_flange_cam_gt)
+
+    samples: list[CalibSample] = []
+    for i in range(24):
+        T_base_flange = _rand_T(rng)
+        # cam_marker = cam_flange · inv(base_flange) · base_marker
+        T_cam_marker = T_cam_flange @ inv_T(T_base_flange) @ T_base_marker
+        samples.append(
+            CalibSample(
+                frame_idx=i,
+                T_base_flange=T_base_flange,
+                T_cam_marker=T_cam_marker,
+            )
+        )
+
+    result = solve_handeye(samples, method="TSAI", setup="eye_in_hand")
+    assert result.setup == "eye_in_hand"
+    assert result.T_flange_cam is not None
+    dt, dR = se3_delta(result.T_flange_cam, T_flange_cam_gt)
+    assert dt < 1.0, f"EIH translation error {dt} mm"
+    assert dR < 0.1, f"EIH rotation error {dR} deg"
+    dt2, dR2 = se3_delta(result.primary_T(), T_flange_cam_gt)
+    assert dt2 < 1.0 and dR2 < 0.1
+
+
+if __name__ == "__main__":
+    test_handeye_recovers_T_base_cam()
+    test_handeye_recovers_T_flange_cam()
+    print("ok")

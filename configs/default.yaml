@@ -27,6 +27,8 @@ aruco:
   T_flange_marker: null
 
 handeye:
+  # eye_to_hand=场景相机求 T_base_cam；eye_in_hand=腕部相机求 T_flange_cam
+  setup: eye_to_hand
   method: TSAI
   compare_methods: false
 

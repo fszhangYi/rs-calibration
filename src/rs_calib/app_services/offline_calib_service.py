@@ -105,19 +105,20 @@ class OfflineCalibService:
                 )
             )
 
+        setup = getattr(self.cfg.handeye, "setup", "eye_to_hand")
         try:
-            result = solve_handeye(selected, method=self.cfg.handeye.method)
+            result = solve_handeye(selected, method=self.cfg.handeye.method, setup=setup)
         except Exception as e:  # noqa: BLE001
             return Err(AppError("CALIB_FAIL", f"HandEye 求解失败 ({camera_serial})", str(e)))
 
         warnings = list(report.warnings)
         if self.cfg.handeye.compare_methods:
             for m in available_methods():
-                if m == result.method:
+                if m == result.method.split("_")[0]:
                     continue
                 try:
-                    other = solve_handeye(selected, method=m)
-                    dt, dR = se3_delta(result.T_base_cam, other.T_base_cam)
+                    other = solve_handeye(selected, method=m, setup=setup)
+                    dt, dR = se3_delta(result.primary_T(), other.primary_T())
                     if dt > 5.0 or dR > 2.0:
                         warnings.append(f"{m} 与主方法偏差 Δt={dt:.1f}mm ΔR={dR:.2f}°")
                 except Exception:  # noqa: BLE001
@@ -130,6 +131,7 @@ class OfflineCalibService:
                 "filter_report": report.__dict__,
                 "warnings": warnings,
                 "camera_serial": camera_serial,
+                "setup": result.setup,
             },
             camera_serial=camera_serial if len(cams) > 1 else None,
         )

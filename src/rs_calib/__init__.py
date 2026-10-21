@@ -1,4 +1,4 @@
-"""Scene-camera eye-to-hand extrinsic calibration host."""
+"""Hand-eye extrinsic calibration host (eye-to-hand / eye-in-hand)."""
 
 from rs_calib.version import __version__
 

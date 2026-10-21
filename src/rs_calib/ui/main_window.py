@@ -213,6 +213,21 @@ class MainWindow(QMainWindow):
         # Record / live
         rec_box = QGroupBox("录制 / 实时标定")
         rec_l = QVBoxLayout(rec_box)
+        setup_row = QHBoxLayout()
+        setup_row.addWidget(QLabel("手眼模式"))
+        self.setup_combo = QComboBox()
+        self.setup_combo.addItem("眼在手外 · T_base_cam", "eye_to_hand")
+        self.setup_combo.addItem("眼在手上 · T_flange_cam", "eye_in_hand")
+        cur_setup = getattr(self.cfg.handeye, "setup", "eye_to_hand")
+        idx = self.setup_combo.findData(cur_setup)
+        self.setup_combo.setCurrentIndex(idx if idx >= 0 else 0)
+        self.setup_combo.currentIndexChanged.connect(self._on_setup_changed)
+        self.setup_combo.setToolTip(
+            "眼在手外：场景相机固定，标定板在末端 → 求 T_base_cam\n"
+            "眼在手上：腕部相机随法兰，标定板固定 → 求 T_flange_cam"
+        )
+        setup_row.addWidget(self.setup_combo, 1)
+        rec_l.addLayout(setup_row)
         self.live_cb = QCheckBox("实时计算（仅单相机）")
         self.live_cb.toggled.connect(self._toggle_live)
         self.live_cb.setToolTip("多相机模式下不支持实时求解，请录制后离线计算")
@@ -506,10 +521,24 @@ class MainWindow(QMainWindow):
         path = session_store.save_extrinsics(self.record.session_dir, self.live.last_result)
         QMessageBox.information(self, "导出", f"已写入 {path}")
 
+    def _on_setup_changed(self, _idx: int = 0) -> None:
+        setup = self.setup_combo.currentData()
+        if not setup:
+            return
+        self.cfg.handeye.setup = str(setup)
+        self.live.reset()
+        tip = "眼在手上" if setup == "eye_in_hand" else "眼在手外"
+        self.statusBar().showMessage(f"手眼模式: {tip} ({setup})")
+        try:
+            save_config(self.cfg)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _on_live_result(self, result: ExtrinsicsResult, status: ConvergenceStatus) -> None:
         flag = "已收敛" if status.converged else "未收敛"
+        primary = "T_flange_cam" if result.setup == "eye_in_hand" else "T_base_cam"
         self.calib_label.setText(
-            f"标定: 样本 {status.n_valid} | {flag} | "
+            f"标定[{result.setup}→{primary}]: 样本 {status.n_valid} | {flag} | "
             f"Δt={status.delta_t_mm:.2f}mm ΔR={status.delta_R_deg:.2f}° | "
             f"streak={status.stable_streak} | method={result.method}"
         )

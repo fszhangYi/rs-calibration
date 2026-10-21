@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from rs_calib.config.schema import AppConfig
 from rs_calib.qt_compat import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -64,6 +65,13 @@ class ParamsDialog(QDialog):
         add_float("dup_pose_eps_mm", "dup_pose_eps_mm", c.dup_pose_eps_mm)
         add_float("dup_pose_eps_deg", "dup_pose_eps_deg", c.dup_pose_eps_deg)
 
+        self.setup = QComboBox()
+        self.setup.addItem("eye_to_hand（眼在手外）", "eye_to_hand")
+        self.setup.addItem("eye_in_hand（眼在手上）", "eye_in_hand")
+        si = self.setup.findData(getattr(cfg.handeye, "setup", "eye_to_hand"))
+        self.setup.setCurrentIndex(si if si >= 0 else 0)
+        form.addRow("handeye.setup", self.setup)
+
         self.method = QLineEdit(cfg.handeye.method)
         form.addRow("handeye.method", self.method)
 
@@ -109,4 +117,7 @@ class ParamsDialog(QDialog):
         c.dup_joint_eps_deg = float(self._widgets["dup_joint_eps_deg"].value())
         c.dup_pose_eps_mm = float(self._widgets["dup_pose_eps_mm"].value())
         c.dup_pose_eps_deg = float(self._widgets["dup_pose_eps_deg"].value())
+        setup = self.setup.currentData()
+        if setup:
+            self.cfg.handeye.setup = str(setup)
         self.cfg.handeye.method = self.method.text().strip().upper() or "TSAI"

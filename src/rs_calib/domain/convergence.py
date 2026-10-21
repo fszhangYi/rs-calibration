@@ -40,7 +40,7 @@ class ConvergenceTracker:
                 warning="样本不足" if n < self.params.min_samples else None,
             )
 
-        dt, dR = se3_delta(self._prev.T_base_cam, result.T_base_cam)
+        dt, dR = se3_delta(self._prev.primary_T(), result.primary_T())
         if dt <= self.params.max_delta_t_mm and dR <= self.params.max_delta_R_deg:
             self._streak += 1
         else:

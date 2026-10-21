@@ -88,6 +88,7 @@ def build_meta(
     incomplete: bool = False,
     frame_count: int = 0,
     T_flange_marker: Optional[list[list[float]]] = None,
+    handeye: Optional[dict[str, Any]] = None,
     # legacy single-cam kwargs (optional)
     camera_serial: str = "",
     camera_name: str = "",
@@ -124,6 +125,7 @@ def build_meta(
         "arm": {"robot_ip": robot_ip, "model": "EC616"},
         "tcp_xyz": list(tcp_xyz),
         "aruco": aruco,
+        "handeye": handeye or {"setup": "eye_to_hand"},
         "T_flange_marker": T_flange_marker,
         "video": primary.get("video") or video_info,
         "frame_count": frame_count,
@@ -159,9 +161,11 @@ def save_extrinsics(
     else:
         path = session_dir / "extrinsics.json"
         flat = None
+    setup = getattr(result, "setup", None) or "eye_to_hand"
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "camera_serial": camera_serial,
+        "setup": setup,
         "T_base_cam": result.T_base_cam.tolist(),
         "T_cam_base": result.T_cam_base.tolist(),
         "xyzrpy_base_cam": xyzrpy_from_T(result.T_base_cam),
@@ -172,6 +176,11 @@ def save_extrinsics(
         "source_session": session_dir.name,
         "created_at": datetime.now(timezone.utc).astimezone().isoformat(),
     }
+    if result.T_flange_cam is not None:
+        payload["T_flange_cam"] = result.T_flange_cam.tolist()
+        payload["xyzrpy_flange_cam"] = xyzrpy_from_T(result.T_flange_cam)
+    if result.T_cam_flange is not None:
+        payload["T_cam_flange"] = result.T_cam_flange.tolist()
     if extra:
         payload.update(extra)
     with path.open("w", encoding="utf-8") as f:

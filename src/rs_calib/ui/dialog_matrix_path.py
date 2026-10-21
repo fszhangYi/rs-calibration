@@ -52,8 +52,15 @@ class MatrixPathDialog(QDialog):
         left = QWidget()
         root = QVBoxLayout(left)
 
+        setup = getattr(cfg.handeye, "setup", "eye_to_hand")
+        board_tip = (
+            "眼在手上：标定板固定在桌上，腕部相机随臂运动采点。"
+            if setup == "eye_in_hand"
+            else "眼在手外：标定板装在末端，场景相机固定采点。"
+        )
         tip = QLabel(
             "先手动点动到标定板视野中心，再「捕获当前位姿」作为 6 维网格中心。\n"
+            f"{board_tip}\n"
             "点位 = 平移网格(Nx×Ny×Nz) × 姿态网格(Nrx×Nry×Nrz)，相对种子位姿的 Δxyz + Δrpy。\n"
             "右侧三维画布借用 sensors-arm Cell A · Elite EC616 URDF；生成点位后自动刷新。"
         )

@@ -303,6 +303,14 @@
       <h2>预览</h2>
       <img id="preview" alt="preview" src="/api/stream.mjpeg" />
       <div class="row">
+        <select id="handeyeSetup" title="手眼模式" style="flex:1">
+          <option value="eye_to_hand">眼在手外 · T_base_cam</option>
+          <option value="eye_in_hand">眼在手上 · T_flange_cam</option>
+        </select>
+        <button onclick="saveHandeyeSetup()">应用模式</button>
+      </div>
+      <p class="hint">眼在手外：场景相机固定、板在末端；眼在手上：腕部相机、板固定桌上</p>
+      <div class="row">
         <label class="chk"><input type="checkbox" id="liveCb" onchange="toggleLive()" /> 实时计算（仅单相机）</label>
         <button class="primary" onclick="recStart()">开始录制</button>
         <button onclick="recStop()">停止录制</button>
@@ -588,6 +596,11 @@
       document.getElementById('jogCartDeg').value = arm.jog_cart_step_deg;
       document.getElementById('cartFrame').value = arm.cart_frame || 'flange';
     }
+    async function saveHandeyeSetup() {
+      const setup = document.getElementById('handeyeSetup').value;
+      const r = await api('/api/handeye/setup', {method:'POST', body: JSON.stringify({setup})});
+      log(`手眼模式 → ${r.setup} (${r.method})`);
+    }
     async function boot() {
       const c = await api('/api/config');
       document.getElementById('armIp').value = c.arm.robot_ip;
@@ -595,6 +608,9 @@
       document.getElementById('tcpY').value = c.tcp_xyz[1];
       document.getElementById('tcpZ').value = c.tcp_xyz[2];
       fillJogSteps(c.arm);
+      if (c.handeye && c.handeye.setup) {
+        document.getElementById('handeyeSetup').value = c.handeye.setup;
+      }
       ensureMatrixViz();
       refreshHealth();
       setInterval(refreshHealth, 1500);
