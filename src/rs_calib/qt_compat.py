@@ -1,0 +1,122 @@
+"""Thin PyQt5/PyQt6 import shim."""
+
+from __future__ import annotations
+
+try:
+    from PyQt5.QtCore import (  # type: ignore
+        QObject,
+        Qt,
+        QThread,
+        QTimer,
+        pyqtSignal,
+    )
+    from PyQt5.QtGui import QImage, QPixmap  # type: ignore
+    from PyQt5.QtWidgets import (  # type: ignore
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QDoubleSpinBox,
+        QFileDialog,
+        QFormLayout,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QListWidget,
+        QListWidgetItem,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+        QScrollArea,
+        QSlider,
+        QSpinBox,
+        QSplitter,
+        QStatusBar,
+        QTabWidget,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
+
+    QT_API = "PyQt5"
+except ImportError:  # pragma: no cover
+    from PyQt6.QtCore import (  # type: ignore
+        QObject,
+        Qt,
+        QThread,
+        QTimer,
+        pyqtSignal,
+    )
+    from PyQt6.QtGui import QImage, QPixmap  # type: ignore
+    from PyQt6.QtWidgets import (  # type: ignore
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QDoubleSpinBox,
+        QFileDialog,
+        QFormLayout,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QListWidget,
+        QListWidgetItem,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+        QScrollArea,
+        QSlider,
+        QSpinBox,
+        QSplitter,
+        QStatusBar,
+        QTabWidget,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
+
+    QT_API = "PyQt6"
+
+__all__ = [
+    "QT_API",
+    "QApplication",
+    "QCheckBox",
+    "QComboBox",
+    "QDialog",
+    "QDialogButtonBox",
+    "QDoubleSpinBox",
+    "QFileDialog",
+    "QFormLayout",
+    "QGridLayout",
+    "QGroupBox",
+    "QHBoxLayout",
+    "QImage",
+    "QLabel",
+    "QLineEdit",
+    "QListWidget",
+    "QListWidgetItem",
+    "QMainWindow",
+    "QMessageBox",
+    "QObject",
+    "QPixmap",
+    "QPushButton",
+    "QScrollArea",
+    "QSlider",
+    "QSpinBox",
+    "QSplitter",
+    "QStatusBar",
+    "QTabWidget",
+    "QTextEdit",
+    "QThread",
+    "QTimer",
+    "Qt",
+    "QVBoxLayout",
+    "QWidget",
+    "pyqtSignal",
+]

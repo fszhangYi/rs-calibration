@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rs-calib"
+version = "0.1.0"
+description = "Scene-camera eye-to-hand extrinsic calibration host (PyQt)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "opencv-python>=4.8",
+  "PyYAML>=6.0",
+  "PyQt5>=5.15",
+]
+
+[project.scripts]
+rs-calib = "rs_calib.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "vendor"]
+testpaths = ["tests"]

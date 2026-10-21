@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# App runtime
+sessions/
+logs/
+*.log
+configs/local.yaml
+configs/user.yaml
+
+# Local sensors soft-link (absolute path differs per machine)
+vendor/sensors
+vendor/sensors/
+
+# Desktop packaging
+release/
+.tools/
+.wine-rs-calib/
+.wine-*/
+packaging/dist*/
+/tmp/rs-calib-*
+frontend/dist/
+*.spec.bak
+
+# Media / temp
+*.mp4
+*.avi
+*.pkl
+tmp/
+.ipynb_checkpoints/
+
+# Office lock / junk
+~$*

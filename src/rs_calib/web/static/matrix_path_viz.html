@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>矩阵走位 · Cell A EC616</title>
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+  <script src="vendor/STLLoader.js"></script>
+  <script src="vendor/URDFLoader.js"></script>
+  <script src="matrix_path_viz.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #070c14; color: #e8eef7;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif; }
+    #stage { position: absolute; inset: 0; }
+    #hint {
+      position: absolute; left: 12px; bottom: 12px; z-index: 2;
+      padding: 6px 10px; border-radius: 8px;
+      background: rgba(12, 18, 30, 0.82); border: 1px solid rgba(61, 214, 198, 0.28);
+      font-size: 12px; color: #8b9bb4; max-width: 90%;
+    }
+    header {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+      padding: 10px 14px; pointer-events: none;
+      background: linear-gradient(180deg, rgba(12,18,30,0.9), transparent);
+    }
+    header strong { color: #3dd6c6; }
+  </style>
+</head>
+<body>
+  <header><strong>RS-Calib</strong> · Cell A · Elite EC616 矩阵点位</header>
+  <div id="stage"></div>
+  <div id="hint">初始化…</div>
+  <script>
+    const viz = new MatrixPathViz(document.getElementById('stage'), {
+      assetBase: '',
+      hintEl: document.getElementById('hint'),
+    });
+    window.matrixViz = viz;
+
+    async function pull() {
+      try {
+        const r = await fetch('waypoints.json?ts=' + Date.now(), { cache: 'no-store' });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (data.waypoints) viz.setWaypoints(data.waypoints, data.seed_xyzrpy || null);
+        if (Array.isArray(data.joints_rad)) viz.setJoints(data.joints_rad);
+        if (data.progress != null && data.progress.i != null) viz.setProgress(data.progress.i - 1);
+      } catch (_) {}
+    }
+    pull();
+    setInterval(pull, 800);
+
+    window.addEventListener('message', (ev) => {
+      const d = ev.data || {};
+      if (d.type === 'matrix_waypoints') {
+        viz.setWaypoints(d.waypoints || [], d.seed_xyzrpy || null);
+        if (Array.isArray(d.joints_rad)) viz.setJoints(d.joints_rad);
+      } else if (d.type === 'matrix_progress') {
+        viz.setProgress((d.i || 1) - 1);
+      } else if (d.type === 'matrix_joints') {
+        if (Array.isArray(d.joints_rad)) viz.setJoints(d.joints_rad);
+      }
+    });
+  </script>
+</body>
+</html>

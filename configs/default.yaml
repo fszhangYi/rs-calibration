@@ -1,0 +1,72 @@
+app:
+  language: zh_CN
+  session_root: "./sessions"
+
+camera:
+  width: 1280
+  height: 720
+  fps: 15
+
+arm:
+  robot_ip: "10.111.34.200"
+  robot_tcp_port: 54321
+  num_joints: 6
+  max_delta_deg: 2.0
+  poll_hz: 50
+  jog_joint_step_deg: 1.0
+  jog_cart_step_m: 0.005
+  jog_cart_step_deg: 2.0
+  cart_frame: "flange"
+
+tcp_xyz: [0.0, 0.0, 0.18]
+
+aruco:
+  dict: DICT_5X5_50
+  marker_id: 0
+  marker_length_m: 0.15
+  T_flange_marker: null
+
+handeye:
+  method: TSAI
+  compare_methods: false
+
+convergence:
+  min_samples: 12
+  recompute_every_n: 1
+  max_delta_t_mm: 1.5
+  max_delta_R_deg: 0.5
+  stable_count: 5
+  min_translation_span_m: 0.15
+  min_rotation_span_deg: 25
+  dup_joint_eps_deg: 0.3
+  dup_pose_eps_mm: 3.0
+  dup_pose_eps_deg: 1.0
+  outlier_jump_mm: 50.0
+  outlier_jump_deg: 30.0
+
+record:
+  video_fourcc: "mp4v"
+  jpeg_quality: 90
+
+verify:
+  axis_length_m: 0.05
+  show_tcp_axes: true
+  show_marker_error: true
+
+# 矩阵走位：相对当前位姿生成 xyz×rpy 网格，供标定采点
+matrix_path:
+  nx: 3
+  ny: 3
+  nz: 1
+  step_x_m: 0.05
+  step_y_m: 0.05
+  step_z_m: 0.03
+  n_rx: 1
+  n_ry: 3
+  n_rz: 1
+  step_rx_deg: 10.0
+  step_ry_deg: 12.0
+  step_rz_deg: 10.0
+  snake: true
+  dwell_s: 0.8
+  frame: flange

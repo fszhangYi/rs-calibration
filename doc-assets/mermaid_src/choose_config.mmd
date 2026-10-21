@@ -1,0 +1,8 @@
+flowchart TD
+  S[需要视觉引导机械臂?] --> Q{相机安装位置}
+  Q -->|装在法兰/腕部| EIH[Eye-in-Hand]
+  Q -->|固定在场景支架| ETH[Eye-to-Hand]
+  EIH --> EIH2[标定板固定在工作台]
+  ETH --> ETH2[标定板固定在末端]
+  EIH2 --> R1[得到 T_cam 相对 EE]
+  ETH2 --> R2[得到 T_cam 相对 Base]
