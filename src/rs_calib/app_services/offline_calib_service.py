@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from rs_calib.config.schema import AppConfig
-from rs_calib.domain.aruco import detect_marker
+from rs_calib.domain.aruco import aruco_meta_dict, detect_target
 from rs_calib.domain.filter_select import FilterParams, filter_and_select
 from rs_calib.domain.handeye import available_methods, solve_handeye
 from rs_calib.domain.math3d import se3_delta
@@ -64,15 +64,8 @@ class OfflineCalibService:
             img = reader.read_index(fs.frame_idx)
             if img is None:
                 continue
-            T_cm, _ = detect_marker(
-                img,
-                intr,
-                dict_name=meta.get("aruco", {}).get("dict", self.cfg.aruco.dict),
-                marker_id=int(meta.get("aruco", {}).get("marker_id", self.cfg.aruco.marker_id)),
-                marker_length_m=float(
-                    meta.get("aruco", {}).get("marker_length_m", self.cfg.aruco.marker_length_m)
-                ),
-            )
+            aruco_params = {**aruco_meta_dict(self.cfg.aruco), **(meta.get("aruco") or {})}
+            T_cm, _ = detect_target(img, intr, aruco_params, draw=False)
             if T_cm is None:
                 continue
             detected.append(
@@ -105,13 +98,20 @@ class OfflineCalibService:
                 )
             )
 
-        setup = getattr(self.cfg.handeye, "setup", "eye_to_hand")
+        # Prefer setup recorded in session meta (what was intended at capture time).
+        meta_he = meta.get("handeye") if isinstance(meta.get("handeye"), dict) else {}
+        setup = str(meta_he.get("setup") or getattr(self.cfg.handeye, "setup", "eye_to_hand"))
+        method = str(meta_he.get("method") or self.cfg.handeye.method)
         try:
-            result = solve_handeye(selected, method=self.cfg.handeye.method, setup=setup)
+            result = solve_handeye(selected, method=method, setup=setup)
         except Exception as e:  # noqa: BLE001
             return Err(AppError("CALIB_FAIL", f"HandEye 求解失败 ({camera_serial})", str(e)))
 
         warnings = list(report.warnings)
+        if setup != getattr(self.cfg.handeye, "setup", setup):
+            warnings.append(
+                f"使用 session meta 手眼模式 {setup}（当前界面为 {self.cfg.handeye.setup}）"
+            )
         if self.cfg.handeye.compare_methods:
             for m in available_methods():
                 if m == result.method.split("_")[0]:

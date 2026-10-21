@@ -8,7 +8,7 @@
   <script src="/assets/vendor/OrbitControls.js"></script>
   <script src="/assets/vendor/STLLoader.js"></script>
   <script src="/assets/vendor/URDFLoader.js"></script>
-  <script src="/assets/matrix_path_viz.js"></script>
+  <script src="/assets/matrix_path_viz.js?v=20261021b"></script>
   <style>
     :root {
       --bg: #0f1419;
@@ -130,18 +130,66 @@
     button:hover { border-color: var(--accent); }
     button.primary { background: #1e4a42; border-color: var(--accent); }
     button.danger { border-color: var(--danger); color: #ffd0d0; }
+    button:disabled {
+      opacity: 0.38;
+      cursor: not-allowed;
+      border-color: var(--line);
+      filter: grayscale(0.35);
+    }
+    button.hl {
+      font-weight: 600;
+      box-shadow: inset 0 0 0 1px var(--accent);
+    }
+    button.hl-danger {
+      font-weight: 600;
+      box-shadow: inset 0 0 0 1px var(--danger);
+      color: #ffd0d0;
+    }
     select, input { flex: 1; min-width: 0; }
+    /* Multi-select list: must not inherit single-line select height:26px, nor flex-shrink away. */
     #camList {
       width: 100%;
-      height: 54px;
+      flex: 0 0 auto;
+      flex-grow: 0;
+      flex-shrink: 0;
+      height: 96px;
+      min-height: 96px;
+      max-height: 96px;
       margin: 0;
       font-size: var(--fs-sm);
       padding: 2px;
+      line-height: 1.35;
+      overflow: auto;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      flex: 0 0 auto;
+      margin: 0 0 2px;
+    }
+    .tabs button {
+      flex: 1;
+      height: 28px;
+      background: #121820;
+    }
+    .tabs button.active {
+      background: #1e4a42;
+      border-color: var(--accent);
+      color: #dffaf3;
+    }
+    .tab-panel {
+      display: none;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+    }
+    .tab-panel.active {
+      display: flex;
     }
     #preview {
       width: 100%;
       flex: 1 1 auto;
-      min-height: 0;
+      min-height: 180px;
       height: auto;
       background: #000;
       border-radius: 6px;
@@ -209,12 +257,15 @@
     #matrixStage {
       flex: 1 1 auto;
       min-height: 220px;
-      height: 32vh;
+      height: 100%;
       border-radius: 6px;
       border: 1px solid var(--line);
       background: #070c14;
       overflow: hidden;
       position: relative;
+    }
+    #tabPreview, #tabViz {
+      min-height: 0;
     }
     #matrixStageHint {
       position: absolute; left: 8px; bottom: 8px; z-index: 2;
@@ -233,27 +284,51 @@
     <section class="card">
       <h2>相机</h2>
       <div class="row">
-        <button class="primary" onclick="scanCams()">扫描</button>
-        <button onclick="openCam()">开流</button>
-        <button onclick="closeCam()">关流</button>
+        <button id="btnScan" class="primary" onclick="scanCams()">扫描</button>
+        <button id="btnOpenCam" onclick="openCam()">开流</button>
+        <button id="btnCloseCam" onclick="closeCam()">关流</button>
       </div>
       <select id="camList" size="4" multiple></select>
       <p class="hint">Ctrl/⌘ 多选开流；多相机录制多视频，禁用实时求解</p>
       <div id="intr" class="meta">内参: —</div>
 
+      <h2>标定板 ChArUco / ArUco</h2>
+      <div class="row">
+        <select id="boardType" title="板类型" style="flex:0 0 auto;width:96px">
+          <option value="charuco">charuco</option>
+          <option value="aruco">aruco</option>
+        </select>
+        <input id="arucoDict" placeholder="DICT_5X5_50" title="字典" style="flex:1" />
+      </div>
+      <div class="row" id="charucoRow">
+        <input id="sqX" type="number" min="2" max="50" step="1" title="squares_x" style="width:3.2em" />
+        <span class="hint">×</span>
+        <input id="sqY" type="number" min="2" max="50" step="1" title="squares_y" style="width:3.2em" />
+        <input id="sqLen" type="number" min="1" max="500" step="1" title="格边长 mm" style="width:4em" />
+        <span class="hint">mm格</span>
+      </div>
+      <div class="row">
+        <input id="markerId" type="number" min="0" max="10000" step="1" title="ArUco marker id" style="width:4em;display:none" />
+        <span class="hint" id="markerIdHint" style="display:none">id</span>
+        <input id="mkLen" type="number" min="1" max="500" step="1" title="码边长 mm" style="width:4em" />
+        <span class="hint">mm码</span>
+        <button class="primary" onclick="saveAruco()">应用板</button>
+      </div>
+      <p class="hint" id="boardHint">ChArUco：格数 × 格边长 + 码边长（码须小于格）</p>
+
       <h2>机械臂</h2>
       <div class="row">
         <input id="armIp" placeholder="机器人 IP" />
-        <button class="primary" onclick="connectArm()">连接</button>
-        <button onclick="disconnectArm()">断开</button>
+        <button id="btnArmConn" class="primary" onclick="connectArm()">连接</button>
+        <button id="btnArmDisc" onclick="disconnectArm()">断开</button>
       </div>
       <div class="row">
-        <button onclick="armOn()">Arm</button>
-        <button onclick="armOff()">Disarm</button>
-        <button class="danger" onclick="armStop()">Stop</button>
+        <button id="btnArmOn" onclick="armOn()">Arm</button>
+        <button id="btnArmOff" onclick="armOff()">Disarm</button>
+        <button id="btnArmStop" class="danger" onclick="armStop()">Stop</button>
       </div>
       <div id="armState" class="meta">臂状态: —</div>
-      <p class="hint">点动幅度</p>
+      <p class="hint">点动幅度 / 单步最大Δq</p>
       <div class="row">
         <input id="jogJointDeg" type="number" min="0.01" max="30" step="0.1" title="关节步进 °" />
         <span class="hint">°关节</span>
@@ -267,7 +342,17 @@
           <option value="flange">flange</option>
           <option value="tcp">tcp</option>
         </select>
-        <button class="primary" onclick="saveJogSteps()">应用步进</button>
+        <input id="maxDeltaDeg" type="number" min="0.01" max="45" step="0.5" title="单步最大Δq °" style="width:4.5em" />
+        <span class="hint">°maxΔ</span>
+        <button class="primary" onclick="saveJogSteps()">应用</button>
+      </div>
+      <div class="row">
+        <input id="vNorm" type="number" min="0.001" max="5" step="0.01" title="关节速度 v_norm rad/s" style="width:5em" />
+        <span class="hint">rad/s 速度</span>
+        <input id="tMin" type="number" min="0.02" max="30" step="0.05" title="t_min s" style="width:4em" />
+        <span class="hint">t_min</span>
+        <input id="tMax" type="number" min="0.1" max="30" step="1" title="t_max s" style="width:4em" />
+        <span class="hint">t_max</span>
       </div>
       <p class="hint">关节点动</p>
       <div class="grid-jog" id="jointJog"></div>
@@ -292,33 +377,42 @@
         <span class="hint">°</span>
       </div>
       <div class="row">
-        <button onclick="matrixPlan()">生成点位</button>
-        <button class="primary" onclick="matrixStart()">开始走位</button>
-        <button class="danger" onclick="matrixStop()">停止</button>
+        <button id="btnMxPlan" onclick="matrixPlan()">生成点位</button>
+        <button id="btnMxStart" class="primary" onclick="matrixStart()">开始走位</button>
+        <button id="btnMxRun" onclick="matrixPlanAndStart()">生成并走位</button>
+        <button id="btnMxStop" class="danger" onclick="matrixStop()">停止</button>
       </div>
       <div id="matrixStat" class="meta">矩阵: —</div>
     </section>
 
     <section class="card preview-card">
-      <h2>预览</h2>
-      <img id="preview" alt="preview" src="/api/stream.mjpeg" />
-      <div class="row">
-        <select id="handeyeSetup" title="手眼模式" style="flex:1">
-          <option value="eye_to_hand">眼在手外 · T_base_cam</option>
-          <option value="eye_in_hand">眼在手上 · T_flange_cam</option>
-        </select>
-        <button onclick="saveHandeyeSetup()">应用模式</button>
+      <div class="tabs" role="tablist">
+        <button type="button" class="active" id="btnTabPreview" onclick="switchViewTab('preview')">相机预览</button>
+        <button type="button" id="btnTabViz" onclick="switchViewTab('viz')">三维画布</button>
       </div>
-      <p class="hint">眼在手外：场景相机固定、板在末端；眼在手上：腕部相机、板固定桌上</p>
-      <div class="row">
-        <label class="chk"><input type="checkbox" id="liveCb" onchange="toggleLive()" /> 实时计算（仅单相机）</label>
-        <button class="primary" onclick="recStart()">开始录制</button>
-        <button onclick="recStop()">停止录制</button>
-        <button onclick="exportLive()">导出外参</button>
+      <div class="tab-panel active" id="tabPreview">
+        <img id="preview" alt="preview" src="" />
+        <div class="row">
+          <select id="handeyeSetup" title="手眼模式" style="flex:1" onchange="saveHandeyeSetup()">
+            <option value="eye_to_hand">眼在手外 · T_base_cam</option>
+            <option value="eye_in_hand">眼在手上 · T_flange_cam</option>
+          </select>
+          <button onclick="saveHandeyeSetup()">应用模式</button>
+        </div>
+        <p class="hint">眼在手外：场景相机固定、板在末端；眼在手上：腕部相机、板固定桌上</p>
+        <div class="row">
+          <label class="chk"><input type="checkbox" id="liveCb" onchange="toggleLive()" /> 实时计算（仅单相机）</label>
+          <button id="btnRecStart" class="primary" onclick="recStart()">开始录制</button>
+          <button id="btnRecStop" onclick="recStop()">停止录制</button>
+          <button id="btnExportLive" onclick="exportLive()">导出外参</button>
+          <button id="btnSessionReport" onclick="sessionReport()" disabled title="收敛后可用：把概况/覆盖/收敛/外参结论写入日志">生成结论</button>
+        </div>
+        <div id="session" class="meta">session: —</div>
       </div>
-      <div id="session" class="meta">session: —</div>
-      <h2>矩阵三维 · Cell A EC616</h2>
-      <div id="matrixStage"><span id="matrixStageHint">生成点位后显示路径</span></div>
+      <div class="tab-panel" id="tabViz">
+        <div id="matrixStage"></div>
+        <span id="matrixStageHint" class="hint">切换到本页后加载 / 生成点位后显示路径</span>
+      </div>
     </section>
 
     <section class="card">
@@ -342,14 +436,35 @@
         <button onclick="saveTcp()">tcp</button>
       </div>
       <h2>日志</h2>
+      <div class="row">
+        <button id="btnLogClear" onclick="clearLog()">清除</button>
+        <button id="btnLogExport" onclick="exportLog()">导出</button>
+      </div>
       <div id="log"></div>
     </section>
   </main>
   <script>
     const logEl = document.getElementById('log');
     function log(msg) {
-      logEl.textContent += msg + '\n';
+      const ts = new Date().toLocaleTimeString();
+      logEl.textContent += `[${ts}] ${msg}\n`;
       logEl.scrollTop = logEl.scrollHeight;
+    }
+    function clearLog() {
+      logEl.textContent = '';
+      log('日志已清除');
+    }
+    function exportLog() {
+      const text = logEl.textContent || '';
+      if (!text.trim()) { log('日志为空，无需导出'); return; }
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const blob = new Blob([text], {type: 'text/plain;charset=utf-8'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `rs-calib-log_${stamp}.txt`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      log('日志已导出 ' + a.download);
     }
     async function api(path, opts={}) {
       const r = await fetch(path, {
@@ -365,11 +480,22 @@
     function setPill(id, on) {
       document.getElementById(id).classList.toggle('on', !!on);
     }
+    function setEn(id, on) {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !on;
+    }
+    function setHl(id, on, danger) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('hl', !!on && !danger);
+      el.classList.toggle('hl-danger', !!on && !!danger);
+    }
 
     const jg = document.getElementById('jointJog');
     for (let i = 0; i < 6; i++) {
       for (const s of [-1, 1]) {
         const b = document.createElement('button');
+        b.className = 'jogBtn';
         b.textContent = `J${i+1}${s>0?'+':'-'}`;
         b.onclick = () => api('/api/arm/jog_joint', {method:'POST', body: JSON.stringify({joint:i, sign:s})})
           .then(()=>log(`jog J${i+1}`)).catch(e=>log('ERR '+e.message));
@@ -380,6 +506,7 @@
     for (const ax of ['x','y','z','rx','ry','rz']) {
       for (const s of [-1, 1]) {
         const b = document.createElement('button');
+        b.className = 'jogBtn';
         b.textContent = `${ax.toUpperCase()}${s>0?'+':'-'}`;
         b.onclick = () => api('/api/arm/jog_cart', {method:'POST', body: JSON.stringify({axis:ax, sign:s})})
           .then(()=>log(`jog ${ax}`)).catch(e=>log('ERR '+e.message));
@@ -387,20 +514,62 @@
       }
     }
 
+    let lastHealth = {};
+    function updateActionState(h) {
+      lastHealth = h || lastHealth;
+      const cam = !!lastHealth.camera_open;
+      const multi = !!lastHealth.multi_camera;
+      const arm = !!lastHealth.arm_connected;
+      const armed = !!lastHealth.armed;
+      const rec = !!lastHealth.recording;
+      const hasLive = !!lastHealth.has_live_result;
+      const hasSess = !!lastHealth.has_session;
+      const offlineFilled = !!(document.getElementById('offlinePath')?.value || '').trim();
+      const canReport = !!lastHealth.can_session_report || !!lastHealth.live_converged || offlineFilled;
+      setEn('btnCloseCam', cam && !rec);
+      setEn('btnOpenCam', !rec);
+      setEn('btnScan', !rec);
+      setEn('btnArmConn', !arm);
+      setEn('btnArmDisc', arm && !rec);
+      setEn('btnArmOn', arm && !armed);
+      setEn('btnArmOff', arm && armed);
+      setEn('btnArmStop', arm);
+      document.querySelectorAll('.jogBtn').forEach(b => { b.disabled = !(arm && armed); });
+      setEn('btnRecStart', cam && arm && !rec);
+      setEn('btnRecStop', rec);
+      setEn('liveCb', cam && !multi);
+      setEn('btnExportLive', hasLive && hasSess);
+      setEn('btnSessionReport', canReport);
+      setEn('btnMxPlan', arm && armed);
+      setEn('btnMxStart', arm && armed);
+      setEn('btnMxRun', arm && armed);
+      setHl('btnRecStart', cam && arm && !rec);
+      setHl('btnRecStop', rec, true);
+      setHl('btnArmOn', arm && !armed);
+      setHl('btnExportLive', hasLive && hasSess);
+      setHl('btnSessionReport', canReport);
+    }
+
     async function refreshHealth() {
       try {
         const h = await api('/api/health');
         document.getElementById('health').textContent =
-          `v${h.version} · cam=${h.camera_open} · arm=${h.arm_connected} · armed=${h.armed}`;
+          `v${h.version} · cam=${h.camera_open} · arm=${h.arm_connected} · armed=${h.armed}` +
+          (h.live_converged ? ' · 已收敛' : '');
         setPill('pillCam', h.camera_open);
         setPill('pillArm', h.arm_connected);
         setPill('pillRec', h.recording);
         setPill('pillLive', h.live);
+        updateActionState(h);
       } catch (e) { document.getElementById('health').textContent = e.message; }
       try {
         const ls = await api('/api/live/status');
-        document.getElementById('liveStat').textContent =
-          `标定 n=${ls.n_samples} ${ls.converged?'收敛':'未收敛'} Δt=${ls.delta_t_mm ?? '-'} ΔR=${ls.delta_R_deg ?? '-'}`;
+        let msg = `标定 n=${ls.n_samples} ${ls.converged?'收敛':'未收敛'} Δt=${ls.delta_t_mm ?? '-'} ΔR=${ls.delta_R_deg ?? '-'}`;
+        if (ls.warning) msg += ` | ${ls.warning}`;
+        if (ls.solve_idx) msg += ` | 求解#${ls.solve_idx}`;
+        if (ls.history_path) msg += ` | ${ls.history_path.split(/[/\\\\]/).pop()}`;
+        if (ls.rejected_after_converge) msg += ` | 舍弃${ls.rejected_after_converge}`;
+        document.getElementById('liveStat').textContent = msg;
       } catch {}
       try {
         const st = await api('/api/arm/state');
@@ -411,22 +580,51 @@
             `${st.armed?'Armed':'Connected'} ${st.endpoint}\n` +
             `joints(deg): ${deg.length?deg.map((d,i)=>`J${i+1}=${d}`).join(', '):'—'}\n` +
             `法兰 xyzrpy: ${pose||'—'}`;
-          if (matrixViz && Array.isArray(st.joints_rad)) matrixViz.setJoints(st.joints_rad);
-          if (matrixViz && Array.isArray(st.pose_xyzrpy)) matrixViz.setLivePose(st.pose_xyzrpy);
+          if (viewTab === 'viz' && matrixViz) {
+            if (Array.isArray(st.joints_rad)) vizCall(matrixViz, 'setJoints', st.joints_rad);
+            if (Array.isArray(st.pose_xyzrpy)) vizCall(matrixViz, 'setLivePose', st.pose_xyzrpy);
+          }
         }
       } catch {}
       try {
         const ms = await api('/api/matrix/status');
+        const busy = !!ms.running;
+        ['btnMxPlan','btnMxStart','btnMxRun'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.disabled = busy;
+        });
         if (ms.running && ms.progress) {
+          matrixWasRunning = true;
           const p = ms.progress;
           document.getElementById('matrixStat').textContent =
             `${p.phase} ${p.i}/${p.n}: ${p.label}`;
-          if (matrixViz) matrixViz.setProgress((p.i || 1) - 1);
+          if (matrixViz) vizCall(matrixViz, 'setProgress', (p.i || 1) - 1);
+        } else if (ms.stopped_for_converge) {
+          document.getElementById('matrixStat').textContent =
+            '已收敛 · 走位/录制已停止' + (ms.session ? (' · ' + ms.session) : '');
+          if (matrixWasRunning) {
+            matrixWasRunning = false;
+            log('矩阵走位因收敛停止' + (ms.session ? (' · session ' + ms.session) : ''));
+            refreshHealth();
+          }
         } else if (ms.last_error) {
           document.getElementById('matrixStat').textContent = '错误: ' + ms.last_error;
+          if (matrixWasRunning) {
+            matrixWasRunning = false;
+            log('矩阵走位结束: ' + ms.last_error);
+            refreshHealth();
+          }
         } else if (ms.last_result) {
           document.getElementById('matrixStat').textContent =
             `完成 ${ms.last_result.reached}/${ms.last_result.total}`;
+          if (matrixWasRunning) {
+            matrixWasRunning = false;
+            log(`矩阵走位完成 ${ms.last_result.reached}/${ms.last_result.total}`);
+            refreshHealth();
+          }
+        } else if (ms.n_waypoints) {
+          document.getElementById('matrixStat').textContent =
+            `就绪 ${ms.n_waypoints} 点 — 可开始走位`;
         }
       } catch {}
     }
@@ -453,7 +651,7 @@
         document.getElementById('intr').textContent =
           `fx=${i.fx.toFixed(1)} fy=${i.fy.toFixed(1)} cx=${i.cx.toFixed(1)} cy=${i.cy.toFixed(1)}`;
       }
-      document.getElementById('preview').src = '/api/stream.mjpeg?' + Date.now();
+      startPreviewPoll();
       if (r.multi_camera) {
         document.getElementById('liveCb').checked = false;
         document.getElementById('liveCb').disabled = true;
@@ -466,6 +664,8 @@
     }
     async function closeCam() {
       await api('/api/camera/close', {method:'POST'});
+      stopPreviewPoll();
+      document.getElementById('preview').removeAttribute('src');
       log('关流');
       refreshHealth();
     }
@@ -495,6 +695,8 @@
       refreshHealth();
     }
     async function recStart() {
+      // Ensure dropdown selection is committed before meta is written.
+      try { await saveHandeyeSetup(); } catch (_) {}
       const r = await api('/api/record/start', {method:'POST'});
       document.getElementById('session').textContent =
         `session: ${r.session} (${r.camera_count||1} 路)`;
@@ -507,12 +709,31 @@
     }
     async function recStop() {
       const r = await api('/api/record/stop', {method:'POST'});
-      log('停止 ' + r.session);
+      log('停止 ' + r.session + (r.live_extrinsics ? (' · 实时外参 ' + r.live_extrinsics) : ''));
       refreshHealth();
     }
     async function exportLive() {
       const r = await api('/api/live/export', {method:'POST'});
       log('导出 ' + r.path);
+      refreshHealth();
+    }
+    async function sessionReport() {
+      try {
+        const offline = (document.getElementById('offlinePath')?.value || '').trim();
+        const body = offline ? {session_dir: offline} : {};
+        const r = await api('/api/session/report', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        log(r.report || '(空报告)');
+        if (r.report_path) log('结论已写入 ' + r.report_path);
+        if (r.session) {
+          document.getElementById('session').textContent = 'session: ' + r.session;
+        }
+        refreshHealth();
+      } catch (e) {
+        log('ERR 生成结论: ' + e.message);
+      }
     }
     async function runOffline() {
       const p = document.getElementById('offlinePath').value.trim();
@@ -526,50 +747,172 @@
       }
     }
     let matrixViz = null;
+    let matrixWasRunning = false;
+    let viewTab = 'preview';
+    let previewPollTimer = null;
+    let previewBusy = false;
+    let previewWanted = false;
+
+    function vizCall(viz, method, ...args) {
+      if (!viz || typeof viz[method] !== 'function') return;
+      try { return viz[method](...args); } catch (e) { log('viz.' + method + ' ERR ' + (e && e.message ? e.message : e)); }
+    }
+
     function ensureMatrixViz() {
-      if (matrixViz || typeof MatrixPathViz !== 'function') return matrixViz;
+      if (matrixViz) return matrixViz;
+      if (typeof MatrixPathViz !== 'function') {
+        log('ERR MatrixPathViz 未加载，请强制刷新页面 (Ctrl+F5)');
+        return null;
+      }
       const host = document.getElementById('matrixStage');
       const hint = document.getElementById('matrixStageHint');
       if (!host) return null;
       matrixViz = new MatrixPathViz(host, { assetBase: '/assets/', hintEl: hint });
+      vizCall(matrixViz, 'setPaused', viewTab !== 'viz');
       return matrixViz;
     }
+
+    function stopPreviewPoll() {
+      previewWanted = false;
+      if (previewPollTimer != null) {
+        clearTimeout(previewPollTimer);
+        previewPollTimer = null;
+      }
+    }
+
+    function startPreviewPoll() {
+      previewWanted = true;
+      if (viewTab !== 'preview') return;
+      if (previewPollTimer != null) return;
+      const tick = async () => {
+        previewPollTimer = null;
+        if (!previewWanted || viewTab !== 'preview') return;
+        if (!previewBusy) {
+          previewBusy = true;
+          try {
+            const url = '/api/preview.jpg?t=' + Date.now();
+            const r = await fetch(url, { cache: 'no-store' });
+            if (r.ok) {
+              const blob = await r.blob();
+              const obj = URL.createObjectURL(blob);
+              const img = document.getElementById('preview');
+              const prev = img.dataset.blobUrl;
+              img.onload = () => {
+                if (prev) URL.revokeObjectURL(prev);
+              };
+              img.src = obj;
+              img.dataset.blobUrl = obj;
+            }
+          } catch (_) {
+            /* keep last frame */
+          } finally {
+            previewBusy = false;
+          }
+        }
+        if (previewWanted && viewTab === 'preview') {
+          previewPollTimer = setTimeout(tick, 100);
+        }
+      };
+      previewPollTimer = setTimeout(tick, 0);
+    }
+
+    function switchViewTab(tab) {
+      viewTab = tab === 'viz' ? 'viz' : 'preview';
+      document.getElementById('btnTabPreview').classList.toggle('active', viewTab === 'preview');
+      document.getElementById('btnTabViz').classList.toggle('active', viewTab === 'viz');
+      document.getElementById('tabPreview').classList.toggle('active', viewTab === 'preview');
+      document.getElementById('tabViz').classList.toggle('active', viewTab === 'viz');
+      if (viewTab === 'preview') {
+        vizCall(matrixViz, 'setPaused', true);
+        if (previewWanted || document.getElementById('pillCam').classList.contains('on')) {
+          startPreviewPoll();
+        }
+      } else {
+        stopPreviewPoll();
+        // Drop JPEG poll while on 3D to avoid competing with WebGL
+        const img = document.getElementById('preview');
+        if (img.dataset.blobUrl) {
+          URL.revokeObjectURL(img.dataset.blobUrl);
+          delete img.dataset.blobUrl;
+        }
+        img.removeAttribute('src');
+        const viz = ensureMatrixViz();
+        vizCall(viz, 'setPaused', false);
+        requestAnimationFrame(() => vizCall(viz, 'resize'));
+      }
+    }
     async function matrixPlan() {
-      const step = (+document.getElementById('mxStep').value) / 1000;
-      const stepR = +document.getElementById('mxStepR').value;
-      const r = await api('/api/matrix/plan', {method:'POST', body: JSON.stringify({
-        nx: +document.getElementById('mxNx').value,
-        ny: +document.getElementById('mxNy').value,
-        nz: +document.getElementById('mxNz').value,
-        step_x_m: step, step_y_m: step, step_z_m: step,
-        n_rx: +document.getElementById('mxNrx').value,
-        n_ry: +document.getElementById('mxNry').value,
-        n_rz: +document.getElementById('mxNrz').value,
-        step_rx_deg: stepR, step_ry_deg: stepR, step_rz_deg: stepR,
-        snake: true, dwell_s: 0.8, frame: 'flange',
-      })});
-      const s = r.summary;
-      document.getElementById('matrixStat').textContent =
-        `点位 ${s.n} | xyz ${ (s.x_span_m*1000).toFixed(0)}/${(s.y_span_m*1000).toFixed(0)}/${(s.z_span_m*1000).toFixed(0)} mm` +
-        ` | rpy ${ (s.rx_span_deg||0).toFixed(1)}/${(s.ry_span_deg||0).toFixed(1)}/${(s.rz_span_deg||0).toFixed(1)} °`;
-      log(`矩阵生成 ${s.n} 点 (含姿态)`);
-      const viz = ensureMatrixViz();
-      if (viz) {
-        viz.setWaypoints(r.waypoints || [], r.seed_xyzrpy || null);
+      try {
+        const step = (+document.getElementById('mxStep').value) / 1000;
+        const stepR = +document.getElementById('mxStepR').value;
+        const r = await api('/api/matrix/plan', {method:'POST', body: JSON.stringify({
+          nx: +document.getElementById('mxNx').value,
+          ny: +document.getElementById('mxNy').value,
+          nz: +document.getElementById('mxNz').value,
+          step_x_m: step, step_y_m: step, step_z_m: step,
+          n_rx: +document.getElementById('mxNrx').value,
+          n_ry: +document.getElementById('mxNry').value,
+          n_rz: +document.getElementById('mxNrz').value,
+          step_rx_deg: stepR, step_ry_deg: stepR, step_rz_deg: stepR,
+          snake: true, dwell_s: 0.8, frame: 'flange',
+        })});
+        const s = r.summary;
+        document.getElementById('matrixStat').textContent =
+          `点位 ${s.n} | xyz ${ (s.x_span_m*1000).toFixed(0)}/${(s.y_span_m*1000).toFixed(0)}/${(s.z_span_m*1000).toFixed(0)} mm` +
+          ` | rpy ${ (s.rx_span_deg||0).toFixed(1)}/${(s.ry_span_deg||0).toFixed(1)}/${(s.rz_span_deg||0).toFixed(1)} ° — 可开始走位`;
+        log(`矩阵生成 ${s.n} 点 (含姿态)`);
+        switchViewTab('viz');
+        const viz = ensureMatrixViz();
+        vizCall(viz, 'setWaypoints', r.waypoints || [], r.seed_xyzrpy || null);
         try {
           const st = await api('/api/arm/state');
-          if (st && Array.isArray(st.joints_rad)) viz.setJoints(st.joints_rad);
+          if (st && Array.isArray(st.joints_rad)) vizCall(viz, 'setJoints', st.joints_rad);
         } catch (_) {}
+        return r;
+      } catch (e) {
+        log('ERR 生成点位: ' + e.message);
+        document.getElementById('matrixStat').textContent = '错误: ' + e.message;
+        throw e;
       }
     }
     async function matrixStart() {
-      const r = await api('/api/matrix/start', {method:'POST'});
-      log('矩阵走位开始 n=' + r.n);
-      ensureMatrixViz();
+      try {
+        const r = await api('/api/matrix/start', {method:'POST'});
+        if (r.session) {
+          document.getElementById('session').textContent =
+            `session: ${r.session} (${r.camera_count||1} 路)`;
+        }
+        if (r.live) {
+          const cb = document.getElementById('liveCb');
+          if (cb) { cb.checked = true; cb.disabled = false; }
+        }
+        log('矩阵走位开始 n=' + r.n + ' · 已重新开录 ' + (r.session || '') +
+            (r.live ? ' · 实时求解开（收敛后停走位/停录）' : ''));
+        document.getElementById('matrixStat').textContent = `走位中 0/${r.n}`;
+        matrixWasRunning = true;
+        switchViewTab('viz');
+        ensureMatrixViz();
+        refreshHealth();
+        return r;
+      } catch (e) {
+        log('ERR 开始走位: ' + e.message);
+        document.getElementById('matrixStat').textContent = '错误: ' + e.message;
+        throw e;
+      }
+    }
+    async function matrixPlanAndStart() {
+      try {
+        await matrixPlan();
+        await matrixStart();
+      } catch (_) {}
     }
     async function matrixStop() {
-      await api('/api/matrix/stop', {method:'POST'});
-      log('矩阵走位停止请求');
+      try {
+        await api('/api/matrix/stop', {method:'POST'});
+        log('矩阵走位停止请求');
+      } catch (e) {
+        log('ERR 停止: ' + e.message);
+      }
     }
     async function saveTcp() {
       const tcp_xyz = [
@@ -586,15 +929,70 @@
         jog_cart_step_m: +document.getElementById('jogCartMm').value / 1000.0,
         jog_cart_step_deg: +document.getElementById('jogCartDeg').value,
         cart_frame: document.getElementById('cartFrame').value,
+        max_delta_deg: +document.getElementById('maxDeltaDeg').value,
+        v_norm_rad_s: +document.getElementById('vNorm').value,
+        t_min_s: +document.getElementById('tMin').value,
+        t_max_s: +document.getElementById('tMax').value,
       };
       const r = await api('/api/jog_steps', {method:'POST', body: JSON.stringify(body)});
-      log(`步进 关节${r.jog_joint_step_deg}° 平移${(r.jog_cart_step_m*1000).toFixed(2)}mm 姿态${r.jog_cart_step_deg}° frame=${r.cart_frame}`);
+      log(`步进 关节${r.jog_joint_step_deg}° 平移${(r.jog_cart_step_m*1000).toFixed(2)}mm 姿态${r.jog_cart_step_deg}° | maxΔ=${r.max_delta_deg}° v=${r.v_norm_rad_s} frame=${r.cart_frame}`);
     }
     function fillJogSteps(arm) {
       document.getElementById('jogJointDeg').value = arm.jog_joint_step_deg;
       document.getElementById('jogCartMm').value = +(arm.jog_cart_step_m * 1000).toFixed(3);
       document.getElementById('jogCartDeg').value = arm.jog_cart_step_deg;
       document.getElementById('cartFrame').value = arm.cart_frame || 'flange';
+      document.getElementById('maxDeltaDeg').value = arm.max_delta_deg != null ? arm.max_delta_deg : 2;
+      document.getElementById('vNorm').value = arm.v_norm_rad_s != null ? arm.v_norm_rad_s : 0.02;
+      document.getElementById('tMin').value = arm.t_min_s != null ? arm.t_min_s : 0.1;
+      document.getElementById('tMax').value = arm.t_max_s != null ? arm.t_max_s : 30;
+    }
+    function syncBoardVisibility() {
+      const aruco = document.getElementById('boardType').value === 'aruco';
+      document.getElementById('charucoRow').style.display = aruco ? 'none' : 'flex';
+      document.getElementById('markerId').style.display = aruco ? '' : 'none';
+      document.getElementById('markerIdHint').style.display = aruco ? '' : 'none';
+      document.getElementById('boardHint').textContent = aruco
+        ? '单 ArUco：字典 + marker id + 码边长(mm)'
+        : 'ChArUco：格数 × 格边长 + 码边长（码须小于格）';
+    }
+    function fillAruco(a) {
+      if (!a) return;
+      const bt = a.board_type || 'charuco';
+      document.getElementById('boardType').value = bt;
+      document.getElementById('arucoDict').value = a.dict || 'DICT_5X5_50';
+      document.getElementById('sqX').value = a.squares_x != null ? a.squares_x : 5;
+      document.getElementById('sqY').value = a.squares_y != null ? a.squares_y : 7;
+      document.getElementById('sqLen').value = a.square_length_m != null ? +(a.square_length_m * 1000).toFixed(1) : 40;
+      document.getElementById('markerId').value = a.marker_id != null ? a.marker_id : 0;
+      const mk = (bt === 'aruco')
+        ? (a.marker_length_m != null ? a.marker_length_m : 0.15)
+        : (a.charuco_marker_length_m != null ? a.charuco_marker_length_m : 0.03);
+      document.getElementById('mkLen').value = +(mk * 1000).toFixed(1);
+      syncBoardVisibility();
+    }
+    async function saveAruco() {
+      const bt = document.getElementById('boardType').value;
+      const mk = +document.getElementById('mkLen').value / 1000.0;
+      const body = {
+        board_type: bt,
+        dict: document.getElementById('arucoDict').value.trim() || 'DICT_5X5_50',
+      };
+      if (bt === 'aruco') {
+        body.marker_id = +document.getElementById('markerId').value;
+        body.marker_length_m = mk;
+      } else {
+        body.squares_x = +document.getElementById('sqX').value;
+        body.squares_y = +document.getElementById('sqY').value;
+        body.square_length_m = +document.getElementById('sqLen').value / 1000.0;
+        body.charuco_marker_length_m = mk;
+      }
+      const r = await api('/api/aruco', {method:'POST', body: JSON.stringify(body)});
+      fillAruco(r.aruco);
+      const a = r.aruco;
+      log(bt === 'aruco'
+        ? `板 aruco ${a.dict} id=${a.marker_id} ${(a.marker_length_m*1000).toFixed(1)}mm`
+        : `板 charuco ${a.dict} ${a.squares_x}x${a.squares_y} 格${(a.square_length_m*1000).toFixed(1)}mm 码${(a.charuco_marker_length_m*1000).toFixed(1)}mm`);
     }
     async function saveHandeyeSetup() {
       const setup = document.getElementById('handeyeSetup').value;
@@ -608,10 +1006,12 @@
       document.getElementById('tcpY').value = c.tcp_xyz[1];
       document.getElementById('tcpZ').value = c.tcp_xyz[2];
       fillJogSteps(c.arm);
+      fillAruco(c.aruco);
+      document.getElementById('boardType').onchange = syncBoardVisibility;
       if (c.handeye && c.handeye.setup) {
         document.getElementById('handeyeSetup').value = c.handeye.setup;
       }
-      ensureMatrixViz();
+      switchViewTab('preview');
       refreshHealth();
       setInterval(refreshHealth, 1500);
     }

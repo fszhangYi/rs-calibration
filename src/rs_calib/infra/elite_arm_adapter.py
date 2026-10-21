@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from rs_calib.domain.types import ArmState
 from rs_calib.errors import AppError
@@ -118,9 +118,45 @@ class EliteArmAdapter:
         self._require_armed()
         return dict(self._sensor.write({"jog_joint": int(idx), "delta_rad": float(delta_rad)}))
 
-    def move_joints_rad(self, joints_rad: list[float]) -> dict[str, Any]:
+    def move_joints_rad(
+        self,
+        joints_rad: list[float],
+        *,
+        relative_to_last: bool = False,
+        reference_joints_rad: Optional[Sequence[float]] = None,
+    ) -> dict[str, Any]:
+        """Absolute joint move. Prefer ``relative_to_last`` during segmented paths so
+        max_delta is checked vs last command (TT may still be settling on feedback).
+        """
         self._require_armed()
-        return dict(self._sensor.write({"joints_rad": list(joints_rad)}))
+        cmd: dict[str, Any] = {"joints_rad": list(joints_rad)}
+        if reference_joints_rad is not None:
+            cmd["reference_joints_rad"] = [float(x) for x in list(reference_joints_rad)[:6]]
+        elif relative_to_last:
+            cmd["relative_to_last"] = True
+        return dict(self._sensor.write(cmd))
+
+    def get_max_delta_deg(self) -> float:
+        if self._sensor is None:
+            return float("nan")
+        rad = float(getattr(self._sensor, "max_delta_rad", float("nan")))
+        return math.degrees(rad) if rad == rad else float("nan")
+
+    def set_max_delta_deg(self, deg: float) -> float:
+        """Update live driver single-step |Δq| cap (degrees)."""
+        d = abs(float(deg))
+        if not (0.01 <= d <= 45.0):
+            raise AppError("JOG_REJECTED", "max_delta_deg 范围应为 0.01~45°")
+        if self._sensor is not None and hasattr(self._sensor, "max_delta_rad"):
+            self._sensor.max_delta_rad = math.radians(d)
+        return d
+
+    def sync_last_cmd_from_joints(self, joints_rad: Sequence[float] | list[float]) -> None:
+        """Align driver last-command baseline to a known joint pose (avoids false Δ rejects)."""
+        if self._sensor is None:
+            return
+        if hasattr(self._sensor, "_last_cmd_rad"):
+            self._sensor._last_cmd_rad = [float(x) for x in list(joints_rad)[:6]]
 
     def _require(self) -> None:
         if self._sensor is None:

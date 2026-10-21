@@ -20,10 +20,15 @@ class CameraSection:
 
 @dataclass
 class ArmSection:
-    robot_ip: str = "10.111.34.200"
+    robot_ip: str = "192.168.1.200"
     robot_tcp_port: int = 54321
     num_joints: int = 6
     max_delta_deg: float = 2.0
+    # Joint-space speed for segmented moves (sensors-arm arm_abs_ramp.v_norm_rad_s).
+    # Duration ≈ clamp(peak_Δq / v_norm, t_min, t_max).
+    v_norm_rad_s: float = 0.02
+    t_min_s: float = 0.1
+    t_max_s: float = 30.0
     poll_hz: float = 50.0
     jog_joint_step_deg: float = 1.0
     jog_cart_step_m: float = 0.005
@@ -33,9 +38,17 @@ class ArmSection:
 
 @dataclass
 class ArucoSection:
+    # aruco = 单码; charuco = ChArUco 板
+    board_type: str = "charuco"
     dict: str = "DICT_5X5_50"
     marker_id: int = 0
     marker_length_m: float = 0.15
+    # ChArUco defaults (OpenCV 常用 5×7 / 40mm格 / 30mm码)
+    squares_x: int = 5
+    squares_y: int = 7
+    square_length_m: float = 0.04
+    charuco_marker_length_m: float = 0.03
+    min_charuco_corners: int = 6
     T_flange_marker: Optional[list[list[float]]] = None
 
 

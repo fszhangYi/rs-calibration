@@ -8,7 +8,7 @@ from typing import Any, Iterator, Optional
 import numpy as np
 
 from rs_calib.domain.math3d import xyzrpy_from_T
-from rs_calib.domain.types import ExtrinsicsResult, FlangeSample, Intrinsics
+from rs_calib.domain.types import CalibSample, ConvergenceStatus, ExtrinsicsResult, FlangeSample, Intrinsics
 from rs_calib.version import __version__
 
 
@@ -145,6 +145,83 @@ def list_cameras_from_meta(meta: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _result_payload(result: ExtrinsicsResult) -> dict[str, Any]:
+    setup = getattr(result, "setup", None) or "eye_to_hand"
+    payload: dict[str, Any] = {
+        "setup": setup,
+        "method": result.method,
+        "n_samples": result.n_samples,
+        "used_frame_indices": list(result.used_indices),
+        "T_base_cam": result.T_base_cam.tolist(),
+        "T_cam_base": result.T_cam_base.tolist(),
+        "xyzrpy_base_cam": xyzrpy_from_T(result.T_base_cam),
+    }
+    if result.T_flange_cam is not None:
+        payload["T_flange_cam"] = result.T_flange_cam.tolist()
+        payload["xyzrpy_flange_cam"] = xyzrpy_from_T(result.T_flange_cam)
+    if result.T_cam_flange is not None:
+        payload["T_cam_flange"] = result.T_cam_flange.tolist()
+    return payload
+
+
+def _sample_payload(
+    sample: CalibSample,
+    joints_rad: Optional[list[float]] = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "frame_idx": int(sample.frame_idx),
+        "T_base_flange": np.asarray(sample.T_base_flange, dtype=float).tolist(),
+        "T_cam_marker": np.asarray(sample.T_cam_marker, dtype=float).tolist(),
+        "xyzrpy_base_flange": xyzrpy_from_T(sample.T_base_flange),
+        "xyzrpy_cam_marker": xyzrpy_from_T(sample.T_cam_marker),
+    }
+    if joints_rad is not None:
+        out["joints_rad"] = [float(x) for x in joints_rad]
+    return out
+
+
+def append_live_solve(
+    session_dir: Path,
+    *,
+    solve_idx: int,
+    samples: list[CalibSample],
+    joints_by_idx: dict[int, list[float]],
+    result: ExtrinsicsResult,
+    status: Optional[ConvergenceStatus] = None,
+    extra: Optional[dict[str, Any]] = None,
+) -> Path:
+    """Append one live HandEye solve (basis samples + result) to ``live_solves.jsonl``."""
+    session_dir = Path(session_dir)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    path = session_dir / "live_solves.jsonl"
+    record: dict[str, Any] = {
+        "solve_idx": int(solve_idx),
+        "ts": datetime.now(timezone.utc).astimezone().isoformat(),
+        "source": "live",
+        "basis": {
+            "n_samples": len(samples),
+            "samples": [
+                _sample_payload(s, joints_by_idx.get(s.frame_idx)) for s in samples
+            ],
+        },
+        "result": _result_payload(result),
+    }
+    if status is not None:
+        record["convergence"] = {
+            "converged": bool(status.converged),
+            "delta_t_mm": float(status.delta_t_mm),
+            "delta_R_deg": float(status.delta_R_deg),
+            "stable_streak": int(status.stable_streak),
+            "n_valid": int(status.n_valid),
+            "warning": status.warning,
+        }
+    if extra:
+        record["extra"] = extra
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return path
+
+
 def save_extrinsics(
     session_dir: Path,
     result: ExtrinsicsResult,
@@ -161,26 +238,14 @@ def save_extrinsics(
     else:
         path = session_dir / "extrinsics.json"
         flat = None
-    setup = getattr(result, "setup", None) or "eye_to_hand"
     payload = {
         "schema_version": 2,
         "camera_serial": camera_serial,
-        "setup": setup,
-        "T_base_cam": result.T_base_cam.tolist(),
-        "T_cam_base": result.T_cam_base.tolist(),
-        "xyzrpy_base_cam": xyzrpy_from_T(result.T_base_cam),
-        "method": result.method,
-        "n_samples": result.n_samples,
-        "used_frame_indices": result.used_indices,
         "convergence": result.metrics.get("convergence"),
         "source_session": session_dir.name,
         "created_at": datetime.now(timezone.utc).astimezone().isoformat(),
+        **_result_payload(result),
     }
-    if result.T_flange_cam is not None:
-        payload["T_flange_cam"] = result.T_flange_cam.tolist()
-        payload["xyzrpy_flange_cam"] = xyzrpy_from_T(result.T_flange_cam)
-    if result.T_cam_flange is not None:
-        payload["T_cam_flange"] = result.T_cam_flange.tolist()
     if extra:
         payload.update(extra)
     with path.open("w", encoding="utf-8") as f:

@@ -8,6 +8,7 @@ import numpy as np
 from rs_calib.app_services.arm_service import ArmService
 from rs_calib.app_services.camera_service import CameraService
 from rs_calib.config.schema import AppConfig
+from rs_calib.domain.aruco import aruco_meta_dict
 from rs_calib.domain.types import FlangeSample
 from rs_calib.errors import AppError, Err, Ok, Result
 from rs_calib.infra import session_store
@@ -72,11 +73,7 @@ class RecordService:
                 cameras=cam_entries,
                 robot_ip=self.cfg.arm.robot_ip,
                 tcp_xyz=list(self.cfg.tcp_xyz),
-                aruco={
-                    "dict": self.cfg.aruco.dict,
-                    "marker_id": self.cfg.aruco.marker_id,
-                    "marker_length_m": self.cfg.aruco.marker_length_m,
-                },
+                aruco=aruco_meta_dict(self.cfg.aruco),
                 incomplete=True,
                 frame_count=0,
                 T_flange_marker=self.cfg.aruco.T_flange_marker,

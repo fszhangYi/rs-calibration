@@ -122,25 +122,38 @@
     scene.add(this._flangeMarker);
 
     const self = this;
-    function resize() {
+    this._paused = false;
+    this._resize = function resize() {
       const w = Math.max(1, host.clientWidth);
       const h = Math.max(1, host.clientHeight);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
-    }
-    resize();
-    window.addEventListener('resize', resize);
+    };
+    this._resize();
+    window.addEventListener('resize', this._resize);
     if (typeof ResizeObserver === 'function') {
-      this._ro = new ResizeObserver(resize);
+      this._ro = new ResizeObserver(this._resize);
       this._ro.observe(host);
     }
     (function loop() {
       if (self._disposed) return;
       requestAnimationFrame(loop);
+      if (self._paused) return;
       if (self.controls && self.controls.enableDamping) self.controls.update();
       self.renderer.render(self.scene, self.camera);
     })();
+  };
+
+  MatrixPathViz.prototype.setPaused = function (paused) {
+    this._paused = !!paused;
+    if (!this._paused && typeof this._resize === 'function') {
+      this._resize();
+    }
+  };
+
+  MatrixPathViz.prototype.resize = function () {
+    if (typeof this._resize === 'function') this._resize();
   };
 
   MatrixPathViz.prototype._loadUrdf = function () {

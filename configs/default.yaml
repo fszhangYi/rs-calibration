@@ -1,37 +1,43 @@
 app:
   language: zh_CN
-  session_root: "./sessions"
-
+  session_root: ./sessions
 camera:
   width: 1280
   height: 720
   fps: 15
-
 arm:
-  robot_ip: "10.111.34.200"
+  robot_ip: 192.168.1.200
   robot_tcp_port: 54321
   num_joints: 6
-  max_delta_deg: 2.0
+  max_delta_deg: 5.0
+  # 关节空间速度（同 sensors-arm arm_abs_ramp.v_norm_rad_s）
+  v_norm_rad_s: 0.02
+  t_min_s: 0.1
+  t_max_s: 30.0
   poll_hz: 50
   jog_joint_step_deg: 1.0
   jog_cart_step_m: 0.005
   jog_cart_step_deg: 2.0
-  cart_frame: "flange"
-
-tcp_xyz: [0.0, 0.0, 0.18]
-
+  cart_frame: flange
+tcp_xyz:
+- 0.0
+- 0.0
+- 0.18
 aruco:
+  board_type: charuco
   dict: DICT_5X5_50
   marker_id: 0
   marker_length_m: 0.15
+  squares_x: 5
+  squares_y: 7
+  square_length_m: 0.04
+  charuco_marker_length_m: 0.03
+  min_charuco_corners: 6
   T_flange_marker: null
-
 handeye:
-  # eye_to_hand=场景相机求 T_base_cam；eye_in_hand=腕部相机求 T_flange_cam
   setup: eye_to_hand
   method: TSAI
   compare_methods: false
-
 convergence:
   min_samples: 12
   recompute_every_n: 1
@@ -45,17 +51,13 @@ convergence:
   dup_pose_eps_deg: 1.0
   outlier_jump_mm: 50.0
   outlier_jump_deg: 30.0
-
 record:
-  video_fourcc: "mp4v"
+  video_fourcc: mp4v
   jpeg_quality: 90
-
 verify:
   axis_length_m: 0.05
   show_tcp_axes: true
   show_marker_error: true
-
-# 矩阵走位：相对当前位姿生成 xyz×rpy 网格，供标定采点
 matrix_path:
   nx: 3
   ny: 3

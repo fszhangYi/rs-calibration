@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from rs_calib.app_services.arm_service import ArmService
+from rs_calib.app_services.live_calib_service import LiveCalibService
 from rs_calib.app_services.matrix_path_service import MatrixPathService
+from rs_calib.app_services.record_service import RecordService
 from rs_calib.config.schema import AppConfig
 from rs_calib.domain.matrix_path import MatrixPathParams, MatrixWaypoint
 from rs_calib.errors import Ok
@@ -12,6 +15,7 @@ from rs_calib.qt_compat import (
     QComboBox,
     QDialog,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -31,14 +35,25 @@ from rs_calib.workers.matrix_path_worker import MatrixPathWorker
 class MatrixPathDialog(QDialog):
     """Generate a pose grid around the current arm pose and execute it."""
 
-    def __init__(self, cfg: AppConfig, arm: ArmService, parent=None):
+    def __init__(
+        self,
+        cfg: AppConfig,
+        arm: ArmService,
+        parent=None,
+        *,
+        record: Optional[RecordService] = None,
+        live: Optional[LiveCalibService] = None,
+    ):
         super().__init__(parent)
         self.cfg = cfg
         self.arm = arm
+        self.record = record
+        self.live = live
         self.svc = MatrixPathService(cfg, arm)
         self._waypoints: list[MatrixWaypoint] = []
         self._seed: Optional[list[float]] = None
         self._worker: Optional[MatrixPathWorker] = None
+        self._stopped_for_converge = False
 
         self.setWindowTitle("矩阵走位 · Cell A EC616")
         self.resize(1100, 720)
@@ -62,6 +77,7 @@ class MatrixPathDialog(QDialog):
             "先手动点动到标定板视野中心，再「捕获当前位姿」作为 6 维网格中心。\n"
             f"{board_tip}\n"
             "点位 = 平移网格(Nx×Ny×Nz) × 姿态网格(Nrx×Nry×Nrz)，相对种子位姿的 Δxyz + Δrpy。\n"
+            "「开始走位」会自动重新开录；实时求解收敛后自动停走位并停录。\n"
             "右侧三维画布借用 sensors-arm Cell A · Elite EC616 URDF；生成点位后自动刷新。"
         )
         tip.setWordWrap(True)
@@ -170,6 +186,16 @@ class MatrixPathDialog(QDialog):
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         root.addWidget(self.log, 1)
+
+        log_row = QHBoxLayout()
+        self.btn_log_clear = QPushButton("清除日志")
+        self.btn_log_clear.clicked.connect(self._clear_log)
+        self.btn_log_export = QPushButton("导出日志")
+        self.btn_log_export.clicked.connect(self._export_log)
+        log_row.addWidget(self.btn_log_clear)
+        log_row.addWidget(self.btn_log_export)
+        log_row.addStretch(1)
+        root.addLayout(log_row)
 
         row2 = QHBoxLayout()
         self.btn_start = QPushButton("开始走位")
@@ -287,6 +313,108 @@ class MatrixPathDialog(QDialog):
         self.viz_panel.show_waypoints(self._waypoints, self._seed, joints)
         self.log.append("三维画布已更新（琥珀=种子，青=路径，蓝=当前）")
 
+    def _clear_log(self) -> None:
+        self.log.clear()
+
+    def _export_log(self) -> None:
+        text = self.log.toPlainText()
+        if not text.strip():
+            QMessageBox.information(self, "导出日志", "日志为空")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出日志",
+            "matrix_path_log.txt",
+            "Text (*.txt);;All (*.*)",
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(text, encoding="utf-8")
+            self.log.append(f"日志已导出: {path}")
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "导出日志", str(e))
+
+    def _restart_record(self) -> bool:
+        """Fresh session for this matrix run; enable live when single-cam."""
+        if self.record is None:
+            self.log.append("未绑定录制服务，跳过自动录制")
+            return True
+        cam = getattr(self.record, "camera", None)
+        if cam is None or getattr(cam, "n_open", 0) <= 0:
+            QMessageBox.warning(self, "走位", "请先打开相机（矩阵走位会自动重新录制）")
+            return False
+        if self.record.recording:
+            stop_res = self.record.stop()
+            if not isinstance(stop_res, Ok):
+                QMessageBox.warning(self, "走位", f"无法结束上一录制: {stop_res.error}")
+                return False
+            self.log.append(f"已结束上一录制: {stop_res.value}")
+        start_res = self.record.start()
+        if not isinstance(start_res, Ok):
+            QMessageBox.warning(self, "走位", f"无法开始录制: {start_res.error}")
+            return False
+        self.log.append(f"已重新开录: {start_res.value}")
+        mw = self.parent()
+        if self.live is not None:
+            multi = bool(getattr(cam, "is_multi", False))
+            if multi:
+                self.live.set_enabled(False)
+                if mw is not None and hasattr(mw, "live_cb"):
+                    self.live_cb_sync(False)
+            else:
+                self.live.reset()
+                self.live.set_enabled(True)
+                self.live_cb_sync(True)
+                self.log.append("已开启实时求解（收敛后自动停走位/停录）")
+        if mw is not None and hasattr(mw, "session_label"):
+            n = getattr(cam, "n_open", 1)
+            mw.session_label.setText(f"session: {start_res.value}  ({n} 路视频)")
+        if mw is not None and hasattr(mw, "_refresh_action_state"):
+            try:
+                mw._refresh_action_state()
+            except Exception:  # noqa: BLE001
+                pass
+        return True
+
+    def live_cb_sync(self, on: bool) -> None:
+        mw = self.parent()
+        if mw is not None and hasattr(mw, "live_cb"):
+            try:
+                mw.live_cb.blockSignals(True)
+                mw.live_cb.setChecked(on)
+                mw.live_cb.blockSignals(False)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _stop_record_on_converge(self) -> None:
+        if self.record is None or not self.record.recording:
+            return
+        try:
+            if self.live is not None and self.live.last_result is not None:
+                path = self.live.persist(self.record.session_dir)
+                if path is not None:
+                    self.log.append(f"收敛外参已写入 {path.name}")
+        except Exception as e:  # noqa: BLE001
+            self.log.append(f"写入外参失败: {e}")
+        stop_res = self.record.stop()
+        if isinstance(stop_res, Ok):
+            self.log.append(f"收敛后已停录: {stop_res.value}")
+        else:
+            self.log.append(f"停录失败: {stop_res.error}")
+        mw = self.parent()
+        if mw is not None and hasattr(mw, "_refresh_action_state"):
+            try:
+                mw._refresh_action_state()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _live_converged(self) -> bool:
+        if self.live is None:
+            return False
+        st = self.live.last_status
+        return bool(st is not None and st.converged)
+
     def _start(self) -> None:
         if self._worker is not None and self._worker.isRunning():
             return
@@ -304,24 +432,31 @@ class MatrixPathDialog(QDialog):
         reply = QMessageBox.question(
             self,
             "确认走位",
-            f"将依次运动到 {n} 个点位（含停顿）。请确认工作空间无障碍。\n继续？",
+            f"将依次运动到 {n} 个点位（含停顿）。\n"
+            "开始后会自动重新录制；收敛后自动停止走位并停录。\n"
+            "请确认工作空间无障碍。继续？",
         )
         yes = getattr(QMessageBox, "Yes", None)
         if yes is not None and reply != yes:
             return
+        if not self._restart_record():
+            return
 
         params = self._params_from_ui()
         self.svc.reset_cancel()
+        self._stopped_for_converge = False
         self._worker = MatrixPathWorker(
             self.svc,
             self._waypoints,
             frame=params.frame,
             dwell_s=params.dwell_s,
+            extra_cancel=self._live_converged,
             parent=self,
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
+        self._worker.converged_stop.connect(self._on_converged_stop)
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.btn_capture.setEnabled(False)
@@ -345,13 +480,23 @@ class MatrixPathDialog(QDialog):
         if joints:
             self.viz_panel.set_joints(joints)
 
+    def _on_converged_stop(self) -> None:
+        self._stopped_for_converge = True
+        self._stop_record_on_converge()
+
     def _on_finished(self, result: object) -> None:
         self.log.append(f"完成: {result}")
         self.status.setText("走位完成")
         self._unlock_ui()
-        QMessageBox.information(self, "矩阵走位", "全部点位已执行完成")
+        QMessageBox.information(self, "矩阵走位", "全部点位已执行完成（未触发收敛停录）")
 
     def _on_failed(self, msg: str) -> None:
+        if self._stopped_for_converge or "收敛" in msg:
+            self.log.append(f"收敛停止: {msg}")
+            self.status.setText("收敛已停走位/停录")
+            self._unlock_ui()
+            QMessageBox.information(self, "矩阵走位", f"已收敛，走位与录制已停止。\n{msg}")
+            return
         self.log.append(f"失败/中止: {msg}")
         self.status.setText(msg)
         self._unlock_ui()

@@ -6,7 +6,7 @@ from typing import Optional
 import numpy as np
 
 from rs_calib.config.schema import AppConfig
-from rs_calib.domain.aruco import detect_marker
+from rs_calib.domain.aruco import aruco_meta_dict, detect_target
 from rs_calib.domain.types import Intrinsics, VerifyFrameMetrics
 from rs_calib.domain.verify_geom import overlay_verify_frame
 from rs_calib.errors import AppError, Err, Ok, Result
@@ -77,15 +77,8 @@ class VerifyService:
             img = self.reader.read_index(s.frame_idx)
             if img is None:
                 continue
-            T_cm, _ = detect_marker(
-                img,
-                self.intrinsics,
-                dict_name=meta.get("aruco", {}).get("dict", self.cfg.aruco.dict),
-                marker_id=int(meta.get("aruco", {}).get("marker_id", self.cfg.aruco.marker_id)),
-                marker_length_m=float(
-                    meta.get("aruco", {}).get("marker_length_m", self.cfg.aruco.marker_length_m)
-                ),
-            )
+            aruco_params = {**aruco_meta_dict(self.cfg.aruco), **(meta.get("aruco") or {})}
+            T_cm, _ = detect_target(img, self.intrinsics, aruco_params, draw=False)
             if T_cm is None:
                 continue
             acc.append(s.T_base_flange @ T_flange_cam @ T_cm)
@@ -119,15 +112,8 @@ class VerifyService:
         if img is None or sample is None:
             return img, None
         meta = getattr(self, "_meta", {})
-        T_cm, _ = detect_marker(
-            img,
-            self.intrinsics,
-            dict_name=meta.get("aruco", {}).get("dict", self.cfg.aruco.dict),
-            marker_id=int(meta.get("aruco", {}).get("marker_id", self.cfg.aruco.marker_id)),
-            marker_length_m=float(
-                meta.get("aruco", {}).get("marker_length_m", self.cfg.aruco.marker_length_m)
-            ),
-        )
+        aruco_params = {**aruco_meta_dict(self.cfg.aruco), **(meta.get("aruco") or {})}
+        T_cm, _ = detect_target(img, self.intrinsics, aruco_params, draw=False)
         out, metrics = overlay_verify_frame(
             img,
             self.intrinsics,

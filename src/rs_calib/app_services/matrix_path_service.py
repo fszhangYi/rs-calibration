@@ -22,16 +22,24 @@ class MatrixPathService:
         self.arm = arm
         self._cancel = False
         self._running = False
+        self._cancel_reason: Optional[str] = None
 
     @property
     def running(self) -> bool:
         return self._running
 
-    def request_cancel(self) -> None:
+    @property
+    def cancel_reason(self) -> Optional[str]:
+        return self._cancel_reason
+
+    def request_cancel(self, reason: str = "user") -> None:
         self._cancel = True
+        if self._cancel_reason is None:
+            self._cancel_reason = reason
 
     def reset_cancel(self) -> None:
         self._cancel = False
+        self._cancel_reason = None
 
     def default_params(self) -> MatrixPathParams:
         return MatrixPathParams.from_dict(
@@ -67,6 +75,18 @@ class MatrixPathService:
             }
         )
 
+    def _should_cancel(self, extra_cancel: Optional[Callable[[], bool]]) -> bool:
+        if self._cancel:
+            return True
+        if extra_cancel is not None:
+            try:
+                if extra_cancel():
+                    self.request_cancel("converge")
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+        return False
+
     def execute(
         self,
         waypoints: Sequence[MatrixWaypoint],
@@ -74,6 +94,7 @@ class MatrixPathService:
         frame: str = "flange",
         dwell_s: float = 0.8,
         progress_cb: Optional[Callable[[int, int, MatrixWaypoint, str], None]] = None,
+        extra_cancel: Optional[Callable[[], bool]] = None,
     ) -> Result[dict]:
         """Run waypoints sequentially. Safe to call from a worker thread."""
         if self._running:
@@ -82,22 +103,26 @@ class MatrixPathService:
             return Err(AppError("PATH_EMPTY", "点位列表为空"))
         self._running = True
         self._cancel = False
+        self._cancel_reason = None
         reached = 0
         try:
             for i, wp in enumerate(waypoints):
-                if self._cancel:
+                if self._should_cancel(extra_cancel):
+                    code = (
+                        "PATH_CONVERGED"
+                        if self._cancel_reason == "converge"
+                        else "PATH_CANCELLED"
+                    )
+                    tip = "收敛停止" if code == "PATH_CONVERGED" else "走位已取消"
                     return Err(
-                        AppError(
-                            "PATH_CANCELLED",
-                            f"走位已取消（完成 {reached}/{len(waypoints)}）",
-                        )
+                        AppError(code, f"{tip}（完成 {reached}/{len(waypoints)}）")
                     )
                 if progress_cb:
                     progress_cb(i + 1, len(waypoints), wp, "moving")
                 move = self.arm.move_to_xyzrpy(
                     wp.xyzrpy,
                     frame=frame,
-                    cancel_cb=lambda: self._cancel,
+                    cancel_cb=lambda: self._should_cancel(extra_cancel),
                 )
                 if not isinstance(move, Ok):
                     err = move.error
@@ -111,15 +136,17 @@ class MatrixPathService:
                 reached += 1
                 if progress_cb:
                     progress_cb(i + 1, len(waypoints), wp, "dwell")
-                # dwell with cancel poll
                 t_end = time.perf_counter() + max(0.0, float(dwell_s))
                 while time.perf_counter() < t_end:
-                    if self._cancel:
+                    if self._should_cancel(extra_cancel):
+                        code = (
+                            "PATH_CONVERGED"
+                            if self._cancel_reason == "converge"
+                            else "PATH_CANCELLED"
+                        )
+                        tip = "收敛停止" if code == "PATH_CONVERGED" else "走位已取消"
                         return Err(
-                            AppError(
-                                "PATH_CANCELLED",
-                                f"走位已取消（完成 {reached}/{len(waypoints)}）",
-                            )
+                            AppError(code, f"{tip}（完成 {reached}/{len(waypoints)}）")
                         )
                     time.sleep(0.05)
             return Ok({"reached": reached, "total": len(waypoints)})

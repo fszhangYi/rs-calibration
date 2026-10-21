@@ -98,14 +98,25 @@ class ArmService:
             delta_xyzrpy=delta,
         )
         if not ok:
-            return Err(AppError("JOG_REJECTED", "笛卡尔 IK 失败", msg))
-        # split into max_delta steps
-        max_d = math.radians(self.cfg.arm.max_delta_deg)
-        q_cur = list(st.joints_rad)
-        diffs = [q_new[j] - q_cur[j] for j in range(6)]
-        n_steps = max(1, int(math.ceil(max(abs(d) / max_d for d in diffs))))
-        last = {}
-        return self.move_joints_segmented(q_cur, q_new)
+            return Err(AppError("JOG_REJECTED", f"笛卡尔 IK 失败: {msg}", msg))
+        return self.move_joints_segmented(list(st.joints_rad), q_new)
+
+    def set_max_delta_deg(self, deg: float) -> Result[float]:
+        """Persist and push single-step joint |Δq| limit to the live driver."""
+        try:
+            applied = self.adapter.set_max_delta_deg(deg)
+        except AppError as e:
+            return Err(e)
+        self.cfg.arm.max_delta_deg = float(applied)
+        return Ok(float(applied))
+
+    def set_v_norm_rad_s(self, v: float) -> Result[float]:
+        """Set joint-space speed (rad/s), same semantics as sensors-arm abs ramp."""
+        vv = float(v)
+        if not math.isfinite(vv) or not (1e-4 <= vv <= 5.0):
+            return Err(AppError("JOG_REJECTED", "v_norm_rad_s 范围应为 0.0001~5 rad/s"))
+        self.cfg.arm.v_norm_rad_s = vv
+        return Ok(vv)
 
     def move_joints_segmented(
         self,
@@ -114,12 +125,37 @@ class ArmService:
         *,
         cancel_cb=None,
     ) -> Result[dict]:
-        """Move joints in max_delta chunks. cancel_cb() -> bool means abort."""
-        max_d = math.radians(self.cfg.arm.max_delta_deg)
+        """Move joints in max_delta chunks. cancel_cb() -> bool means abort.
+
+        Pace like sensors-arm: T = clamp(peak_Δq / v_norm, t_min, t_max), then
+        sleep T/n_steps between TT chunks.
+        """
+        # Stay slightly under driver cap to absorb float / last-cmd baseline drift.
+        live_cap = self.adapter.get_max_delta_deg()
+        cap_deg = float(self.cfg.arm.max_delta_deg)
+        if live_cap == live_cap:  # not NaN
+            cap_deg = min(cap_deg, float(live_cap))
+        max_d = math.radians(max(0.01, cap_deg)) * 0.98
         q_cur = [float(x) for x in list(q_from)[:6]]
         q_new = [float(x) for x in list(q_to)[:6]]
+        self.adapter.sync_last_cmd_from_joints(q_cur)
         diffs = [q_new[j] - q_cur[j] for j in range(6)]
-        n_steps = max(1, int(math.ceil(max(abs(d) / max_d for d in diffs + [1e-12]))))
+        peak = max(abs(d) for d in diffs)
+        n_steps = max(1, int(math.ceil(peak / max_d))) if peak > 1e-12 else 1
+
+        v = float(getattr(self.cfg.arm, "v_norm_rad_s", 0.02) or 0.02)
+        if not math.isfinite(v) or v <= 0:
+            v = 0.02
+        t_min = float(getattr(self.cfg.arm, "t_min_s", 0.1) or 0.1)
+        t_max = float(getattr(self.cfg.arm, "t_max_s", 30.0) or 30.0)
+        t_min = max(0.02, min(30.0, t_min))
+        t_max = max(t_min, min(30.0, t_max))
+        if peak < 1e-9:
+            duration = t_min
+        else:
+            duration = max(t_min, min(t_max, peak / v))
+        sleep_s = duration / float(n_steps)
+
         last: dict = {}
         try:
             for s in range(1, n_steps + 1):
@@ -127,10 +163,12 @@ class ArmService:
                     return Err(AppError("PATH_CANCELLED", "走位已取消"))
                 alpha = s / n_steps
                 q_cmd = [q_cur[j] + diffs[j] * alpha for j in range(6)]
-                last = self.adapter.move_joints_rad(q_cmd)
+                # Guard vs last command, not lagging feedback — required for continuous TT path.
+                last = self.adapter.move_joints_rad(q_cmd, relative_to_last=True)
                 if not last.get("ok", True):
                     return Err(AppError("JOG_REJECTED", last.get("error", "运动被拒绝")))
-                time.sleep(0.03)
+                if sleep_s > 1e-4:
+                    time.sleep(sleep_s)
             return Ok(last)
         except AppError as e:
             return Err(e)
@@ -164,7 +202,13 @@ class ArmService:
             T_flange = T_target @ inv_T(T_flange_tcp(self.cfg.tcp_xyz))
         else:
             T_flange = T_target
-        ok, q_new, msg = self.kin.ik_flange(T_flange, st.joints_rad)
+        ok, q_new, msg = self.kin.ik_flange(
+            T_flange,
+            st.joints_rad,
+            enforce_teach_soft_limits=False,
+            position_tolerance_m=5e-4,
+            orientation_tolerance_rad=1e-2,
+        )
         if not ok:
-            return Err(AppError("JOG_REJECTED", "走位 IK 失败", msg))
+            return Err(AppError("JOG_REJECTED", f"走位 IK 失败: {msg}", msg))
         return self.move_joints_segmented(st.joints_rad, q_new, cancel_cb=cancel_cb)
