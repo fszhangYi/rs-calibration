@@ -9,6 +9,7 @@ from rs_calib.domain.math3d import inv_T, se3_delta
 from rs_calib.domain.types import CalibSample, ExtrinsicsResult
 
 SetupName = Literal["eye_to_hand", "eye_in_hand"]
+BackendName = Literal["auto", "opencv", "native"]
 
 _METHOD_CONSTANTS = {
     "TSAI": "CALIB_HAND_EYE_TSAI",
@@ -27,6 +28,31 @@ def available_methods() -> list[str]:
 
 def available_setups() -> list[str]:
     return list(_SETUPS)
+
+
+def opencv_handeye_available() -> bool:
+    """True when ``cv2.calibrateHandEye`` is importable (typical OpenCV 4.x)."""
+    return _resolve_calibrate_handeye() is not None
+
+
+def opencv_handeye_status() -> dict[str, object]:
+    """Runtime probe for UI tooltips / dual-backend gating."""
+    try:
+        import cv2
+
+        ver = str(getattr(cv2, "__version__", "?"))
+    except Exception as e:  # noqa: BLE001
+        return {"available": False, "cv_version": None, "detail": f"import cv2 failed: {e}"}
+    ok = opencv_handeye_available()
+    return {
+        "available": ok,
+        "cv_version": ver,
+        "detail": (
+            "cv2.calibrateHandEye OK (OpenCV 4.x style)"
+            if ok
+            else "cv2.calibrateHandEye missing (common on OpenCV 5.0 wheels; use native or install opencv-python<5)"
+        ),
+    }
 
 
 def normalize_setup(setup: str) -> SetupName:
@@ -412,20 +438,113 @@ def align_extrinsic_to_ref(T_new: np.ndarray, T_ref: Optional[np.ndarray]) -> np
     return best
 
 
-def solve_handeye(
+def _pack_result(
+    T_solved: np.ndarray,
+    *,
+    setup_n: SetupName,
+    method_label: str,
+    n_samples: int,
+    indices: list[int],
+    metrics: dict,
+) -> ExtrinsicsResult:
+    if setup_n == "eye_to_hand":
+        T_base_cam = T_solved
+        return ExtrinsicsResult(
+            T_base_cam=T_base_cam,
+            T_cam_base=inv_T(T_base_cam),
+            method=method_label,
+            n_samples=n_samples,
+            used_indices=indices,
+            metrics=metrics,
+            setup=setup_n,
+            T_flange_cam=None,
+            T_cam_flange=None,
+        )
+    T_flange_cam = T_solved
+    eye = np.eye(4, dtype=np.float64)
+    return ExtrinsicsResult(
+        T_base_cam=eye.copy(),
+        T_cam_base=eye.copy(),
+        method=method_label,
+        n_samples=n_samples,
+        used_indices=indices,
+        metrics={"note": "eye_in_hand: primary is T_flange_cam", **metrics},
+        setup=setup_n,
+        T_flange_cam=T_flange_cam,
+        T_cam_flange=inv_T(T_flange_cam),
+    )
+
+
+def _solve_once(
+    samples: Sequence[CalibSample],
+    *,
+    method_key: str,
+    setup_n: SetupName,
+    backend: BackendName,
+    align_to: Optional[np.ndarray],
+) -> ExtrinsicsResult:
+    """Solve with a single backend (``opencv`` / ``native`` / ``auto``)."""
+    indices = [int(s.frame_idx) for s in samples]
+    metrics: dict = {"backend_request": backend}
+    T_solved: Optional[np.ndarray] = None
+    used = method_key
+
+    if backend in ("auto", "opencv"):
+        T_cv = _opencv_calibrate(samples, setup=setup_n, method_key=method_key)
+        if T_cv is not None:
+            T_solved = T_cv
+            used = f"{method_key}_OPENCV"
+            metrics["backend"] = "opencv"
+            metrics["cv_version"] = opencv_handeye_status().get("cv_version")
+        elif backend == "opencv":
+            st = opencv_handeye_status()
+            raise RuntimeError(
+                "OpenCV HandEye backend unavailable: "
+                f"{st.get('detail')} (cv={st.get('cv_version')})"
+            )
+
+    if T_solved is None:
+        T_solved, winner, axxb_res = _native_calibrate(
+            samples, setup=setup_n, method_key=method_key
+        )
+        used = f"{method_key}_NATIVE"
+        if not opencv_handeye_available():
+            used = f"{method_key}_NATIVE_NO_CV_HANDEYE"
+        if winner != method_key:
+            used = f"{used}({winner})"
+        metrics.update(
+            {
+                "backend": "native",
+                "native_winner": winner,
+                "axxb_residual": axxb_res,
+            }
+        )
+
+    assert T_solved is not None
+    if align_to is not None:
+        T_solved = align_extrinsic_to_ref(T_solved, align_to)
+    return _pack_result(
+        T_solved,
+        setup_n=setup_n,
+        method_label=used,
+        n_samples=len(samples),
+        indices=indices,
+        metrics=metrics,
+    )
+
+
+def solve_handeye_dual(
     samples: Sequence[CalibSample],
     method: str = "TSAI",
     *,
     setup: str = "eye_to_hand",
     align_to: Optional[np.ndarray] = None,
 ) -> ExtrinsicsResult:
-    """Solve hand-eye extrinsic for the selected setup.
+    """Run **OpenCV calibrateHandEye** and **native** solvers, keep both.
 
-    - ``eye_to_hand`` → ``T_base_cam`` (scene camera fixed in base)
-    - ``eye_in_hand`` → ``T_flange_cam`` (wrist camera fixed on flange)
-
-    Prefer ``cv2.calibrateHandEye`` when present (OpenCV 4.x). OpenCV 5.0 wheels
-    often omit it — then use native Tsai/Park/Andreff and pick lowest AX=XB residual.
+    Primary result prefers OpenCV when available (official Tsai/Park/…).
+    Native is always attached under ``metrics["dual"]`` with Δt/ΔR vs primary.
+    If OpenCV HandEye is missing, falls back to native-only and records a warning.
     """
     if len(samples) < 3:
         raise ValueError(f"need at least 3 samples, got {len(samples)}")
@@ -434,54 +553,106 @@ def solve_handeye(
         raise ValueError(f"unknown handeye method: {method}")
     setup_n = normalize_setup(setup)
 
-    indices = [int(s.frame_idx) for s in samples]
-    T_solved = _opencv_calibrate(samples, setup=setup_n, method_key=key)
-    used = key
-    metrics: dict = {}
-    if T_solved is None:
-        T_solved, winner, axxb_res = _native_calibrate(
-            samples, setup=setup_n, method_key=key
+    native = _solve_once(
+        samples,
+        method_key=key,
+        setup_n=setup_n,
+        backend="native",
+        align_to=align_to,
+    )
+
+    opencv_res: Optional[ExtrinsicsResult] = None
+    opencv_err: Optional[str] = None
+    if opencv_handeye_available():
+        try:
+            opencv_res = _solve_once(
+                samples,
+                method_key=key,
+                setup_n=setup_n,
+                backend="opencv",
+                align_to=align_to,
+            )
+        except Exception as e:  # noqa: BLE001
+            opencv_err = str(e)
+    else:
+        st = opencv_handeye_status()
+        opencv_err = str(st.get("detail") or "calibrateHandEye unavailable")
+
+    if opencv_res is None:
+        dual = {
+            "enabled": True,
+            "primary": "native",
+            "opencv": None,
+            "native_method": native.method,
+            "opencv_error": opencv_err,
+            "warning": "双算法：OpenCV HandEye 不可用，仅保留原生解",
+        }
+        native.metrics = {**native.metrics, "dual": dual}
+        native.method = f"DUAL_NO_CV→{native.method}"
+        return native
+
+    dt, dR = se3_delta(opencv_res.primary_T(), native.primary_T())
+    dual = {
+        "enabled": True,
+        "primary": "opencv",
+        "opencv_method": opencv_res.method,
+        "native_method": native.method,
+        "delta_t_mm": float(dt),
+        "delta_R_deg": float(dR),
+        "opencv_T": np.asarray(opencv_res.primary_T(), dtype=float).tolist(),
+        "native_T": np.asarray(native.primary_T(), dtype=float).tolist(),
+        "native_metrics": dict(native.metrics),
+        "opencv_metrics": dict(opencv_res.metrics),
+    }
+    # Prefer OpenCV as the live/offline accepted extrinsic; native kept for compare.
+    primary = opencv_res
+    primary.method = (
+        f"DUAL(OPENCV={opencv_res.method}|NATIVE={native.method}"
+        f"|Δt={dt:.2f}mm|ΔR={dR:.2f}°)"
+    )
+    primary.metrics = {**primary.metrics, "dual": dual}
+    return primary
+
+
+def solve_handeye(
+    samples: Sequence[CalibSample],
+    method: str = "TSAI",
+    *,
+    setup: str = "eye_to_hand",
+    align_to: Optional[np.ndarray] = None,
+    backend: BackendName = "auto",
+    dual_backends: bool = False,
+) -> ExtrinsicsResult:
+    """Solve hand-eye extrinsic for the selected setup.
+
+    - ``eye_to_hand`` → ``T_base_cam`` (scene camera fixed in base)
+    - ``eye_in_hand`` → ``T_flange_cam`` (wrist camera fixed on flange)
+
+    Backends:
+    - ``auto``: OpenCV ``calibrateHandEye`` if present (OpenCV 4.x), else native
+    - ``opencv``: require ``cv2.calibrateHandEye``
+    - ``native``: Tsai/Park/(Andreff) AX=XB implementation in this repo
+
+    When ``dual_backends=True``, both OpenCV and native are computed (see
+    ``solve_handeye_dual``); primary prefers OpenCV.
+    """
+    if dual_backends:
+        return solve_handeye_dual(
+            samples, method=method, setup=setup, align_to=align_to
         )
-        used = f"{key}_NATIVE"
-        if _resolve_calibrate_handeye() is None:
-            used = f"{key}_NATIVE_NO_CV_HANDEYE"
-        if winner != key:
-            used = f"{used}({winner})"
-        metrics = {"native_winner": winner, "axxb_residual": axxb_res}
-
-    if align_to is not None:
-        if setup_n == "eye_in_hand":
-            T_solved = align_extrinsic_to_ref(T_solved, align_to)
-        else:
-            T_solved = align_extrinsic_to_ref(T_solved, align_to)
-
-    if setup_n == "eye_to_hand":
-        T_base_cam = T_solved
-        T_cam_base = inv_T(T_base_cam)
-        return ExtrinsicsResult(
-            T_base_cam=T_base_cam,
-            T_cam_base=T_cam_base,
-            method=used,
-            n_samples=len(samples),
-            used_indices=indices,
-            metrics=metrics,
-            setup=setup_n,
-            T_flange_cam=None,
-            T_cam_flange=None,
-        )
-
-    T_flange_cam = T_solved
-    T_cam_flange = inv_T(T_flange_cam)
-    eye = np.eye(4, dtype=np.float64)
-    eih_metrics = {"note": "eye_in_hand: primary is T_flange_cam", **metrics}
-    return ExtrinsicsResult(
-        T_base_cam=eye.copy(),
-        T_cam_base=eye.copy(),
-        method=used,
-        n_samples=len(samples),
-        used_indices=indices,
-        metrics=eih_metrics,
-        setup=setup_n,
-        T_flange_cam=T_flange_cam,
-        T_cam_flange=T_cam_flange,
+    if len(samples) < 3:
+        raise ValueError(f"need at least 3 samples, got {len(samples)}")
+    key = method.upper()
+    if key not in _METHOD_CONSTANTS:
+        raise ValueError(f"unknown handeye method: {method}")
+    setup_n = normalize_setup(setup)
+    be = (backend or "auto").strip().lower()  # type: ignore[assignment]
+    if be not in ("auto", "opencv", "native"):
+        raise ValueError(f"unknown handeye backend: {backend}")
+    return _solve_once(
+        samples,
+        method_key=key,
+        setup_n=setup_n,
+        backend=be,  # type: ignore[arg-type]
+        align_to=align_to,
     )

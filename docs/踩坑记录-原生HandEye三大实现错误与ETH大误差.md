@@ -322,9 +322,24 @@ python -m pytest tests/test_handeye_synthetic.py -q
 
 ---
 
-## 10. 实操建议（避免再踩）
+## 10. 双算法求解（OpenCV + 原生）
 
-1. OpenCV 5 无 HandEye：接受 `NATIVE`，或改用确认带 API 的 OpenCV 4.x。  
+上位机「录制 / 实时标定」与「参数」里可勾选 **双算法求解（OpenCV + 原生）**（`handeye.dual_backends`）：
+
+- 每次求解同时跑：
+  - **OpenCV**：`cv2.calibrateHandEye`（OpenCV 4.x 官方）
+  - **原生**：本仓库 Tsai/Park（全组合相对运动）
+- **主外参默认取 OpenCV**；原生解与二者 Δt/ΔR 写入 `metrics.dual`，并出现在 method 字符串里。
+- 本机无 `calibrateHandEye`（常见于 OpenCV 5.0）时：回退原生并告警 `DUAL_NO_CV→…`。
+
+依赖建议：`opencv-python>=4.8,<5`（见 `pyproject.toml`）。  
+API：`solve_handeye(..., dual_backends=True)` / `backend="opencv"|"native"|"auto"`。
+
+---
+
+## 11. 实操建议（避免再踩）
+
+1. OpenCV 5 无 HandEye：接受 `NATIVE`，或改用确认带 API 的 OpenCV 4.x；需要双算法时请装 4.x。  
 2. ETH 采集：故意加大姿态变化，不要只靠平移扫点。  
 3. 收敛 ≠ 合格：必须看验证双色轴 / 板误差，不要只看 Δt/ΔR。  
 4. 换夹具后更新 \(T_{fm}\)（只影响画图与绝对误差解读）。  
@@ -332,7 +347,7 @@ python -m pytest tests/test_handeye_synthetic.py -q
 
 ---
 
-## 11. 一句话
+## 12. 一句话
 
 > **OpenCV 5 逼出原生 HandEye 后，Park 外积反了、Tsai 当成 rotvec、相对运动只用邻帧；**  
 > **坏 Park 被残差丢掉，ETH 落到更差的旧 Tsai 上，收敛却绝对误差 ~45 mm。**  

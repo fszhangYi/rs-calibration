@@ -78,6 +78,27 @@ def test_handeye_tsai_recovers_T_base_cam():
     assert dR < 0.5, f"Tsai rotation error {dR} deg"
 
 
+def test_handeye_native_backend_and_dual():
+    from rs_calib.domain.handeye import opencv_handeye_available, solve_handeye
+
+    samples, T_base_cam_gt = _eth_samples(np.random.default_rng(3), n=20)
+    native = solve_handeye(samples, method="PARK", setup="eye_to_hand", backend="native")
+    assert native.metrics.get("backend") == "native"
+    dt, dR = se3_delta(native.T_base_cam, T_base_cam_gt)
+    assert dt < 1.0 and dR < 0.1
+
+    dual = solve_handeye(samples, method="PARK", setup="eye_to_hand", dual_backends=True)
+    assert "dual" in dual.metrics
+    if opencv_handeye_available():
+        assert dual.metrics["dual"].get("primary") == "opencv"
+        assert "OPENCV" in dual.method or "DUAL" in dual.method
+        dt2, dR2 = se3_delta(dual.T_base_cam, T_base_cam_gt)
+        assert dt2 < 1.0 and dR2 < 0.1
+    else:
+        assert dual.metrics["dual"].get("primary") == "native"
+        assert "DUAL_NO_CV" in dual.method
+
+
 def test_handeye_recovers_T_flange_cam():
     rng = np.random.default_rng(7)
     T_flange_cam_gt = _rand_T(rng)

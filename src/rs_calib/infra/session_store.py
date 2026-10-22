@@ -161,6 +161,8 @@ def _result_payload(result: ExtrinsicsResult) -> dict[str, Any]:
         payload["xyzrpy_flange_cam"] = xyzrpy_from_T(result.T_flange_cam)
     if result.T_cam_flange is not None:
         payload["T_cam_flange"] = result.T_cam_flange.tolist()
+    if result.metrics:
+        payload["metrics"] = dict(result.metrics)
     return payload
 
 

@@ -7,7 +7,6 @@ set "PY=C:\Users\user\miniconda3\python.exe"
 set "HOST=127.0.0.1"
 set "PORT=6006"
 set "URL=http://%HOST%:%PORT%/"
-set "HEALTH=http://%HOST%:%PORT%/api/health"
 
 if not exist "%PY%" (
   where python >nul 2>&1
@@ -28,12 +27,18 @@ timeout /t 1 /nobreak >nul
 
 echo 工作目录: %CD%
 echo PYTHONPATH=%PYTHONPATH%
+echo [检查] OpenCV 4.x + calibrateHandEye …
+"%PY%" -m rs_calib.infra.ensure_opencv
+if errorlevel 1 (
+  echo [错误] OpenCV HandEye 不可用，双算法无法启用。已尝试自动修复失败。
+  echo 请手动执行: "%PY%" -m pip install "opencv-python>=4.8,^<5"
+  pause
+  exit /b 1
+)
 echo 启动 Web 上位机: %URL%
-echo 等待后端 /api/health 就绪后再打开浏览器；关闭本窗口即可停止服务。
+echo 后端就绪后会自动打开浏览器；页面点「安全退出」可关闭前后端。
+echo 也可设 RS_CALIB_NO_BROWSER=1 禁止自动弹窗。
 echo.
-
-REM 后台轮询健康检查，成功后再弹网页（最多约 90s）；服务仍在本窗口前台运行
-start /b powershell -NoProfile -ExecutionPolicy Bypass -Command "for($i=0;$i -lt 90;$i++){ try { $r = Invoke-WebRequest -Uri '%HEALTH%' -UseBasicParsing -TimeoutSec 1; if ($r.StatusCode -eq 200) { Start-Process '%URL%'; exit 0 } } catch {}; Start-Sleep -Seconds 1 }; Write-Host '[错误] 等待后端超时，未打开网页'"
 
 "%PY%" -m rs_calib web --host %HOST% --port %PORT%
 set "ERR=%ERRORLEVEL%"

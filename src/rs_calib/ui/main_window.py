@@ -342,6 +342,26 @@ class MainWindow(QMainWindow):
         self.live_cb.toggled.connect(self._toggle_live)
         self.live_cb.setToolTip("多相机模式下不支持实时求解，请录制后离线计算")
         rec_l.addWidget(self.live_cb)
+        self.dual_cb = QCheckBox("双算法求解（OpenCV + 原生）")
+        self.dual_cb.setChecked(bool(getattr(self.cfg.handeye, "dual_backends", False)))
+        self.dual_cb.toggled.connect(self._on_dual_backends_toggled)
+        from rs_calib.domain.handeye import opencv_handeye_status
+
+        st = opencv_handeye_status()
+        cv_tip = (
+            f"OpenCV {st.get('cv_version')}: {st.get('detail')}\n"
+            "勾选后每次求解同时跑 cv2.calibrateHandEye 与原生 AX=XB；"
+            "主外参取 OpenCV。启动时会自动把缺 HandEye 的 OpenCV 5 修成 4.x。"
+        )
+        self.dual_cb.setToolTip(cv_tip)
+        if st.get("available"):
+            self.dual_cb.setText("双算法求解（OpenCV + 原生）")
+            self.dual_cb.setEnabled(True)
+        else:
+            self.dual_cb.setText("双算法求解（需先修复 OpenCV HandEye）")
+            self.dual_cb.setEnabled(False)
+            self.dual_cb.setChecked(False)
+        rec_l.addWidget(self.dual_cb)
         row2 = QHBoxLayout()
         self.btn_rec_start = QPushButton("开始录制")
         self.btn_rec_stop = QPushButton("停止录制")
@@ -754,6 +774,24 @@ class MainWindow(QMainWindow):
             pass
         self._refresh_action_state()
 
+    def _on_dual_backends_toggled(self, checked: bool) -> None:
+        self.cfg.handeye.dual_backends = bool(checked)
+        try:
+            save_config(self.cfg)
+        except Exception:  # noqa: BLE001
+            pass
+        from rs_calib.domain.handeye import opencv_handeye_status
+
+        st = opencv_handeye_status()
+        if checked and not st.get("available"):
+            self.statusBar().showMessage(
+                f"双算法已开，但本机无 calibrateHandEye（{st.get('cv_version')}）→ 将仅用原生"
+            )
+        else:
+            self.statusBar().showMessage(
+                "双算法求解: 开（OpenCV+原生）" if checked else "双算法求解: 关"
+            )
+
     def _on_live_result(self, result: ExtrinsicsResult, status: ConvergenceStatus) -> None:
         flag = "已收敛" if status.converged else "未收敛"
         primary = "T_flange_cam" if result.setup == "eye_in_hand" else "T_base_cam"
@@ -761,10 +799,20 @@ class MainWindow(QMainWindow):
         hist = ""
         if self.live._history_path is not None:
             hist = f" | 求解#{self.live._solve_idx}→{self.live._history_path.name}"
+        dual = (result.metrics or {}).get("dual") if result.metrics else None
+        dual_txt = ""
+        if isinstance(dual, dict) and dual.get("enabled"):
+            if dual.get("primary") == "opencv":
+                dual_txt = (
+                    f" | 双算法Δt={float(dual.get('delta_t_mm', float('nan'))):.2f}mm "
+                    f"ΔR={float(dual.get('delta_R_deg', float('nan'))):.2f}°"
+                )
+            elif dual.get("warning"):
+                dual_txt = f" | {dual.get('warning')}"
         self.calib_label.setText(
             f"标定[{result.setup}→{primary}]: 样本 {status.n_valid} | {flag} | "
             f"Δt={status.delta_t_mm:.2f}mm ΔR={status.delta_R_deg:.2f}° | "
-            f"streak={status.stable_streak} | method={result.method}{extra}{hist}"
+            f"streak={status.stable_streak} | method={result.method}{dual_txt}{extra}{hist}"
         )
         self._refresh_action_state()
 
@@ -913,6 +961,14 @@ class MainWindow(QMainWindow):
             self.spin_max_delta.setValue(float(self.cfg.arm.max_delta_deg))
             self.spin_v_norm.setValue(float(self.cfg.arm.v_norm_rad_s))
             self._sync_board_widgets_from_cfg()
+            self.dual_cb.blockSignals(True)
+            self.dual_cb.setChecked(bool(getattr(self.cfg.handeye, "dual_backends", False)))
+            self.dual_cb.blockSignals(False)
+            si = self.setup_combo.findData(getattr(self.cfg.handeye, "setup", "eye_to_hand"))
+            if si >= 0:
+                self.setup_combo.blockSignals(True)
+                self.setup_combo.setCurrentIndex(si)
+                self.setup_combo.blockSignals(False)
             pushed = self.arm.set_max_delta_deg(self.cfg.arm.max_delta_deg)
             if not isinstance(pushed, Ok) and self.arm.adapter.is_connected:
                 QMessageBox.warning(self, "max_delta", str(pushed.error))

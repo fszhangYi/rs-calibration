@@ -169,6 +169,7 @@ class LiveCalibService:
                 method=self.cfg.handeye.method,
                 setup=getattr(self.cfg.handeye, "setup", "eye_to_hand"),
                 align_to=align_ref,
+                dual_backends=bool(getattr(self.cfg.handeye, "dual_backends", False)),
             )
         except Exception:  # noqa: BLE001
             return

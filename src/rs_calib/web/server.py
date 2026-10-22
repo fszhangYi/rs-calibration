@@ -91,6 +91,7 @@ class SessionReportBody(BaseModel):
 class HandeyeSetupBody(BaseModel):
     setup: str = "eye_to_hand"
     method: Optional[str] = None
+    dual_backends: Optional[bool] = None
 
 
 class MatrixPlanBody(BaseModel):
@@ -293,6 +294,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config")
     def get_config() -> dict:
+        from rs_calib.domain.handeye import opencv_handeye_status
+
         return {
             "tcp_xyz": cfg.tcp_xyz,
             "arm": {
@@ -316,12 +319,15 @@ def create_app() -> FastAPI:
                 "setup": getattr(cfg.handeye, "setup", "eye_to_hand"),
                 "method": cfg.handeye.method,
                 "compare_methods": cfg.handeye.compare_methods,
+                "dual_backends": bool(getattr(cfg.handeye, "dual_backends", False)),
             },
+            "opencv_handeye": opencv_handeye_status(),
         }
 
     @app.post("/api/handeye/setup")
     def set_handeye_setup(body: HandeyeSetupBody) -> dict:
-        from rs_calib.domain.handeye import normalize_setup
+        from rs_calib.config.store import save_config
+        from rs_calib.domain.handeye import normalize_setup, opencv_handeye_status
 
         try:
             setup = normalize_setup(body.setup)
@@ -330,8 +336,46 @@ def create_app() -> FastAPI:
         cfg.handeye.setup = setup
         if body.method:
             cfg.handeye.method = str(body.method).strip().upper() or cfg.handeye.method
+        if body.dual_backends is not None:
+            cfg.handeye.dual_backends = bool(body.dual_backends)
         live.reset()
-        return {"ok": True, "setup": cfg.handeye.setup, "method": cfg.handeye.method}
+        try:
+            save_config(cfg)
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "ok": True,
+            "setup": cfg.handeye.setup,
+            "method": cfg.handeye.method,
+            "dual_backends": bool(cfg.handeye.dual_backends),
+            "opencv_handeye": opencv_handeye_status(),
+        }
+
+    @app.post("/api/shutdown")
+    def shutdown_server() -> dict:
+        """Safe exit: stop grab / camera / arm, then terminate the process."""
+        import os
+        import threading
+        import time
+
+        def _die() -> None:
+            time.sleep(0.35)
+            try:
+                _stop_grab()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                camera.close()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                arm.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+            os._exit(0)
+
+        threading.Thread(target=_die, name="rs-calib-shutdown", daemon=True).start()
+        return {"ok": True, "message": "shutting down"}
 
     @app.post("/api/tcp")
     def set_tcp(body: TcpBody) -> dict:
@@ -699,6 +743,8 @@ def create_app() -> FastAPI:
             "history_path": str(live._history_path) if live._history_path else None,
             "method": r.method if r else None,
             "setup": getattr(r, "setup", None) if r else getattr(cfg.handeye, "setup", "eye_to_hand"),
+            "dual_backends": bool(getattr(cfg.handeye, "dual_backends", False)),
+            "dual": (r.metrics or {}).get("dual") if r and r.metrics else None,
             "T_base_cam": r.T_base_cam.tolist() if r else None,
             "T_flange_cam": r.T_flange_cam.tolist() if r and r.T_flange_cam is not None else None,
         }
@@ -970,7 +1016,42 @@ def create_app() -> FastAPI:
 
 
 def main(host: str = "0.0.0.0", port: int = 6006) -> None:
+    import os
+    import threading
+    import time
+    import urllib.error
+    import urllib.request
+    import webbrowser
+
     import uvicorn
+
+    browse_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    url = f"http://{browse_host}:{port}/"
+    health = f"http://{browse_host}:{port}/api/health"
+    no_browser = (os.environ.get("RS_CALIB_NO_BROWSER") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+    def _open_browser_when_ready() -> None:
+        if no_browser:
+            return
+        for _ in range(90):
+            try:
+                with urllib.request.urlopen(health, timeout=1.5) as resp:
+                    if getattr(resp, "status", 200) == 200:
+                        webbrowser.open(url)
+                        print(f"[rs-calib] opened browser {url}", flush=True)
+                        return
+            except (urllib.error.URLError, TimeoutError, OSError):
+                pass
+            time.sleep(1.0)
+        print(f"[rs-calib] health wait timeout; open manually: {url}", flush=True)
+
+    threading.Thread(
+        target=_open_browser_when_ready, name="rs-calib-open-browser", daemon=True
+    ).start()
 
     uvicorn.run(
         "rs_calib.web.server:create_app",

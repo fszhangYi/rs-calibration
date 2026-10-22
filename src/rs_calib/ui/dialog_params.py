@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from rs_calib.config.schema import AppConfig
 from rs_calib.qt_compat import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -159,6 +160,20 @@ class ParamsDialog(QDialog):
         self.method = QLineEdit(cfg.handeye.method)
         form.addRow("handeye.method", self.method)
 
+        self.dual_backends = QCheckBox("同时跑 OpenCV calibrateHandEye + 原生（主解=OpenCV）")
+        self.dual_backends.setChecked(bool(getattr(cfg.handeye, "dual_backends", False)))
+        try:
+            from rs_calib.domain.handeye import opencv_handeye_status
+
+            st = opencv_handeye_status()
+            self.dual_backends.setToolTip(
+                f"OpenCV {st.get('cv_version')}: {st.get('detail')}\n"
+                "建议 opencv-python≥4.8,<5"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        form.addRow("handeye.dual_backends", self.dual_backends)
+
         layout.addLayout(form)
         reset_btn = QPushButton("恢复收敛推荐值")
         reset_btn.clicked.connect(self._reset_conv)
@@ -238,3 +253,4 @@ class ParamsDialog(QDialog):
         if setup:
             self.cfg.handeye.setup = str(setup)
         self.cfg.handeye.method = self.method.text().strip().upper() or "TSAI"
+        self.cfg.handeye.dual_backends = bool(self.dual_backends.isChecked())

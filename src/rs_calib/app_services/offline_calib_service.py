@@ -103,7 +103,12 @@ class OfflineCalibService:
         setup = str(meta_he.get("setup") or getattr(self.cfg.handeye, "setup", "eye_to_hand"))
         method = str(meta_he.get("method") or self.cfg.handeye.method)
         try:
-            result = solve_handeye(selected, method=method, setup=setup)
+            result = solve_handeye(
+                selected,
+                method=method,
+                setup=setup,
+                dual_backends=bool(getattr(self.cfg.handeye, "dual_backends", False)),
+            )
         except Exception as e:  # noqa: BLE001
             return Err(AppError("CALIB_FAIL", f"HandEye 求解失败 ({camera_serial})", str(e)))
 
@@ -112,6 +117,16 @@ class OfflineCalibService:
             warnings.append(
                 f"使用 session meta 手眼模式 {setup}（当前界面为 {self.cfg.handeye.setup}）"
             )
+        dual = (result.metrics or {}).get("dual") if result.metrics else None
+        if isinstance(dual, dict):
+            if dual.get("warning"):
+                warnings.append(str(dual["warning"]))
+            elif dual.get("enabled") and dual.get("primary") == "opencv":
+                warnings.append(
+                    f"双算法: OpenCV vs 原生 Δt={float(dual.get('delta_t_mm', float('nan'))):.2f}mm "
+                    f"ΔR={float(dual.get('delta_R_deg', float('nan'))):.2f}° "
+                    f"(主解=OpenCV)"
+                )
         if self.cfg.handeye.compare_methods:
             for m in available_methods():
                 if m == result.method.split("_")[0]:

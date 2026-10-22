@@ -57,7 +57,10 @@ class HandeyeSection:
     # eye_to_hand (场景相机) | eye_in_hand (腕部相机)
     setup: str = "eye_to_hand"
     method: str = "TSAI"
+    # Compare TSAI/PARK/… variants against the primary method (offline warnings).
     compare_methods: bool = False
+    # When True: run OpenCV calibrateHandEye + native AX=XB every solve; primary=OpenCV.
+    dual_backends: bool = False
 
 
 @dataclass

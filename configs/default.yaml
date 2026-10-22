@@ -42,6 +42,8 @@ handeye:
   setup: eye_in_hand
   method: TSAI
   compare_methods: false
+  # true: 每次同时跑 OpenCV4 calibrateHandEye + 原生，主解取 OpenCV（需 cv2.calibrateHandEye）
+  dual_backends: false
 convergence:
   min_samples: 12
   recompute_every_n: 1

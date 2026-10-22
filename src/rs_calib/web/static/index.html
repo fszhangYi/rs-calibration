@@ -279,6 +279,8 @@
   <header>
     <h1>RS Eye-to-Hand 标定</h1>
     <span class="meta" id="health">…</span>
+    <span style="flex:1"></span>
+    <button type="button" class="danger" id="btnSafeExit" onclick="safeExit()" title="关闭后端服务并退出本页">安全退出</button>
   </header>
   <main>
     <section class="card">
@@ -402,11 +404,15 @@
         <p class="hint">眼在手外：场景相机固定、板在末端；眼在手上：腕部相机、板固定桌上</p>
         <div class="row">
           <label class="chk"><input type="checkbox" id="liveCb" onchange="toggleLive()" /> 实时计算（仅单相机）</label>
+          <label class="chk" title="同时跑 OpenCV calibrateHandEye 与原生；主解取 OpenCV">
+            <input type="checkbox" id="dualCb" onchange="saveDualBackends()" /> 双算法（OpenCV+原生）
+          </label>
           <button id="btnRecStart" class="primary" onclick="recStart()">开始录制</button>
           <button id="btnRecStop" onclick="recStop()">停止录制</button>
           <button id="btnExportLive" onclick="exportLive()">导出外参</button>
           <button id="btnSessionReport" onclick="sessionReport()" disabled title="收敛后可用：把概况/覆盖/收敛/外参结论写入日志">生成结论</button>
         </div>
+        <p class="hint" id="dualHint">双算法：需本机 OpenCV 4.x 带 calibrateHandEye</p>
         <div id="session" class="meta">session: —</div>
       </div>
       <div class="tab-panel" id="tabViz">
@@ -565,6 +571,12 @@
       try {
         const ls = await api('/api/live/status');
         let msg = `标定 n=${ls.n_samples} ${ls.converged?'收敛':'未收敛'} Δt=${ls.delta_t_mm ?? '-'} ΔR=${ls.delta_R_deg ?? '-'}`;
+        if (ls.method) msg += ` | ${ls.method}`;
+        if (ls.dual && ls.dual.enabled && ls.dual.primary === 'opencv') {
+          msg += ` | 双算法Δt=${Number(ls.dual.delta_t_mm).toFixed(2)}mm ΔR=${Number(ls.dual.delta_R_deg).toFixed(2)}°`;
+        } else if (ls.dual && ls.dual.warning) {
+          msg += ` | ${ls.dual.warning}`;
+        }
         if (ls.warning) msg += ` | ${ls.warning}`;
         if (ls.solve_idx) msg += ` | 求解#${ls.solve_idx}`;
         if (ls.history_path) msg += ` | ${ls.history_path.split(/[/\\\\]/).pop()}`;
@@ -996,8 +1008,57 @@
     }
     async function saveHandeyeSetup() {
       const setup = document.getElementById('handeyeSetup').value;
-      const r = await api('/api/handeye/setup', {method:'POST', body: JSON.stringify({setup})});
-      log(`手眼模式 → ${r.setup} (${r.method})`);
+      const dual = document.getElementById('dualCb').checked;
+      const r = await api('/api/handeye/setup', {
+        method:'POST',
+        body: JSON.stringify({setup, dual_backends: dual})
+      });
+      applyDualUi(r);
+      log(`手眼模式 → ${r.setup} (${r.method}) · 双算法=${r.dual_backends}`);
+    }
+    async function saveDualBackends() {
+      const setup = document.getElementById('handeyeSetup').value;
+      const dual = document.getElementById('dualCb').checked;
+      const r = await api('/api/handeye/setup', {
+        method:'POST',
+        body: JSON.stringify({setup, dual_backends: dual})
+      });
+      applyDualUi(r);
+      log(dual
+        ? `双算法开 · OpenCV=${(r.opencv_handeye&&r.opencv_handeye.available)?'可用':'不可用'} (${(r.opencv_handeye&&r.opencv_handeye.cv_version)||'?'})`
+        : '双算法关');
+    }
+    function applyDualUi(payload) {
+      const cb = document.getElementById('dualCb');
+      const hint = document.getElementById('dualHint');
+      const he = payload.handeye || payload;
+      const oc = payload.opencv_handeye || null;
+      const want = !!(he && he.dual_backends);
+      const avail = !!(oc && oc.available);
+      if (cb) {
+        cb.disabled = !avail;
+        cb.checked = avail && want;
+        cb.title = avail
+          ? `OpenCV ${oc.cv_version}: ${oc.detail}`
+          : ((oc && oc.detail) || '本机无 calibrateHandEye，无法启用双算法');
+      }
+      if (hint) {
+        hint.textContent = avail
+          ? `双算法就绪 · OpenCV ${oc.cv_version} · 主解取 OpenCV`
+          : `双算法不可用 · ${(oc && oc.detail) || '请安装 opencv-python≥4.8,<5'}`;
+      }
+    }
+    async function safeExit() {
+      if (!confirm('将停止相机/机械臂连接并关闭后端服务，确定安全退出？')) return;
+      try {
+        await api('/api/shutdown', {method:'POST'});
+      } catch (e) {
+        // backend may die before response returns
+      }
+      document.body.innerHTML =
+        '<div style="padding:2.5rem;font-family:sans-serif;color:#e7eef6;background:#0f1419;min-height:100vh">' +
+        '<h2>已安全退出</h2><p>后端服务已关闭。可直接关闭本浏览器标签页。</p></div>';
+      try { window.close(); } catch (e) {}
     }
     async function boot() {
       const c = await api('/api/config');
@@ -1011,6 +1072,7 @@
       if (c.handeye && c.handeye.setup) {
         document.getElementById('handeyeSetup').value = c.handeye.setup;
       }
+      applyDualUi(c);
       switchViewTab('preview');
       refreshHealth();
       setInterval(refreshHealth, 1500);
