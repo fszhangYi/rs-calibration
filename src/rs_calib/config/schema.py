@@ -85,7 +85,9 @@ class RecordSection:
 @dataclass
 class VerifySection:
     axis_length_m: float = 0.05
-    show_tcp_axes: bool = True
+    # Default False: primary overlay is predicted vs detected board.
+    # TCP axes (uses tcp_xyz) are easy to misread when T_flange_marker is unknown.
+    show_tcp_axes: bool = False
     show_marker_error: bool = True
 
 

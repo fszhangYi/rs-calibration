@@ -7,6 +7,10 @@ import numpy as np
 from rs_calib.domain.math3d import T_flange_tcp, draw_axes, inv_T, se3_delta
 from rs_calib.domain.types import Intrinsics, VerifyFrameMetrics
 
+# A = reference / predicted (RGB); B = vision / detected (cyan family)
+_COLORS_A = ((0, 0, 255), (0, 255, 0), (255, 0, 0))  # X red, Y green, Z blue
+_COLORS_B = ((255, 255, 0), (255, 0, 255), (0, 255, 255))  # cyan / magenta / yellow
+
 
 def marker_pred_T_eth(
     T_cam_base: np.ndarray,
@@ -26,7 +30,6 @@ def marker_pred_T_eih(
     return T_cam_flange @ inv_T(T_base_flange) @ T_base_marker
 
 
-# backward-compatible alias
 def marker_pred_T(
     T_cam_base: np.ndarray,
     T_base_flange: np.ndarray,
@@ -66,67 +69,67 @@ def overlay_verify_frame(
     tcp_xyz: Sequence[float],
     T_flange_marker: Optional[np.ndarray] = None,
     axis_length_m: float = 0.05,
-    show_tcp_axes: bool = True,
+    show_tcp_axes: bool = False,
     frame_idx: int = 0,
     setup: str = "eye_to_hand",
     T_cam_flange: Optional[np.ndarray] = None,
     T_base_marker: Optional[np.ndarray] = None,
 ) -> tuple[np.ndarray, VerifyFrameMetrics]:
+    """Overlay dual-color axes and compute primary marker error.
+
+    **Primary visual (both ETH and EIH): predicted board vs detected board.**
+    Drawing TCP was misleading for ETH when ``tcp_xyz`` is non-zero and/or
+    ``T_flange_marker`` is unknown (axes floated onto the table away from ArUco).
+
+    eye_to_hand (ETH):
+      A = T_cam_base · T_base_flange · T_flange_marker  (pred board, RGB)
+      B = T_cam_marker  (detected board, CMY)
+      primary error = se3_delta(A, B)
+      optional TCP axes only if ``show_tcp_axes`` (aux, often offset by tcp_xyz)
+
+    eye_in_hand (EIH):
+      A = predicted board from extrinsics + fixed T_base_marker (RGB)
+      B = detected board (CMY)
+    """
     out = image_bgr.copy()
     K = intrinsics.K()
     dist = intrinsics.dist_coeffs()
     is_eih = setup == "eye_in_hand"
 
+    has = T_cam_marker is not None
+    err_t = err_r = float("nan")
+    T_pred = None
+
+    if is_eih:
+        if T_cam_flange is not None and T_base_marker is not None:
+            T_pred = marker_pred_T_eih(T_cam_flange, T_base_flange, T_base_marker)
+    else:
+        if T_cam_base is not None:
+            T_pred = marker_pred_T_eth(T_cam_base, T_base_flange, T_flange_marker)
+
+    if has and T_pred is not None:
+        assert T_cam_marker is not None
+        err_t, err_r = se3_delta(T_pred, T_cam_marker)
+
+    # Primary: board axes on the marker (should coincide when calib is good).
+    if T_pred is not None:
+        draw_axes(out, K, dist, T_pred, axis_length_m, _COLORS_A, thickness=3)
+    if has:
+        assert T_cam_marker is not None
+        draw_axes(out, K, dist, T_cam_marker, axis_length_m, _COLORS_B, thickness=2)
+
+    # Optional auxiliary TCP (disabled by default — easy to misread as "board error").
     if show_tcp_axes:
         if is_eih and T_cam_flange is not None:
             Ta = tcp_A_eih(T_cam_flange, tcp_xyz)
-        elif T_cam_base is not None:
+            draw_axes(out, K, dist, Ta, axis_length_m * 0.6, _COLORS_A, thickness=1)
+        elif (not is_eih) and T_cam_base is not None:
             Ta = tcp_A(T_cam_base, T_base_flange, tcp_xyz)
-        else:
-            Ta = None
-        if Ta is not None:
-            draw_axes(
-                out,
-                K,
-                dist,
-                Ta,
-                axis_length_m,
-                colors_bgr=((0, 0, 255), (0, 255, 0), (255, 0, 0)),
-                thickness=3,
-            )
-
-    has = T_cam_marker is not None
-    err_t = err_r = float("nan")
-    if has:
-        assert T_cam_marker is not None
-        T_pred = None
-        if is_eih and T_cam_flange is not None and T_base_marker is not None:
-            T_pred = marker_pred_T_eih(T_cam_flange, T_base_flange, T_base_marker)
-        elif T_cam_base is not None:
-            T_pred = marker_pred_T_eth(T_cam_base, T_base_flange, T_flange_marker)
-        if T_pred is not None:
-            err_t, err_r = se3_delta(T_pred, T_cam_marker)
-        if show_tcp_axes and not is_eih:
-            Tb = tcp_B(T_cam_marker, tcp_xyz, T_flange_marker)
-            draw_axes(
-                out,
-                K,
-                dist,
-                Tb,
-                axis_length_m,
-                colors_bgr=((255, 255, 0), (255, 255, 0), (255, 255, 0)),
-                thickness=2,
-            )
-        elif show_tcp_axes and is_eih and T_pred is not None:
-            draw_axes(
-                out,
-                K,
-                dist,
-                T_pred,
-                axis_length_m,
-                colors_bgr=((255, 255, 0), (255, 255, 0), (255, 255, 0)),
-                thickness=2,
-            )
+            draw_axes(out, K, dist, Ta, axis_length_m * 0.6, _COLORS_A, thickness=1)
+            if has:
+                assert T_cam_marker is not None
+                Tb = tcp_B(T_cam_marker, tcp_xyz, T_flange_marker)
+                draw_axes(out, K, dist, Tb, axis_length_m * 0.6, _COLORS_B, thickness=1)
 
     metrics = VerifyFrameMetrics(
         frame_idx=frame_idx,

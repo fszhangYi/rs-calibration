@@ -156,11 +156,19 @@ class LiveCalibService:
         if len(self.samples) < 3 or self._since_recompute < n:
             return
         self._since_recompute = 0
+        # Align to previous / locked primary so HandEye branch flips don't spuriously
+        # report ΔR≈180° between consecutive solves.
+        align_ref = None
+        if self.tracker.locked_result is not None:
+            align_ref = self.tracker.locked_result.primary_T()
+        elif self.last_result is not None:
+            align_ref = self.last_result.primary_T()
         try:
             result = solve_handeye(
                 self.samples,
                 method=self.cfg.handeye.method,
                 setup=getattr(self.cfg.handeye, "setup", "eye_to_hand"),
+                align_to=align_ref,
             )
         except Exception:  # noqa: BLE001
             return

@@ -17,14 +17,12 @@ def _rand_T(rng: np.random.Generator) -> np.ndarray:
     return T
 
 
-def test_handeye_recovers_T_base_cam():
-    rng = np.random.default_rng(42)
+def _eth_samples(rng: np.random.Generator, n: int = 20) -> tuple[list[CalibSample], np.ndarray]:
     T_base_cam_gt = _rand_T(rng)
     T_flange_marker = _rand_T(rng)  # unknown fixed; should not matter
     T_cam_base = inv_T(T_base_cam_gt)
-
     samples: list[CalibSample] = []
-    for i in range(20):
+    for i in range(n):
         T_base_flange = _rand_T(rng)
         T_cam_marker = T_cam_base @ T_base_flange @ T_flange_marker
         samples.append(
@@ -34,12 +32,50 @@ def test_handeye_recovers_T_base_cam():
                 T_cam_marker=T_cam_marker,
             )
         )
+    return samples, T_base_cam_gt
 
+
+def test_handeye_recovers_T_base_cam():
+    samples, T_base_cam_gt = _eth_samples(np.random.default_rng(42))
     result = solve_handeye(samples, method="TSAI", setup="eye_to_hand")
     assert result.setup == "eye_to_hand"
     dt, dR = se3_delta(result.T_base_cam, T_base_cam_gt)
     assert dt < 1.0, f"translation error {dt} mm"
     assert dR < 0.1, f"rotation error {dR} deg"
+
+
+def test_handeye_park_recovers_T_base_cam():
+    """Park had a swapped outer(a,b) bug; must recover GT on its own."""
+    from rs_calib.domain.handeye import (
+        _filter_pairs,
+        _motion_pairs_axxb,
+        _solve_ax_xb_park,
+    )
+
+    samples, T_base_cam_gt = _eth_samples(np.random.default_rng(99), n=24)
+    A, B = _motion_pairs_axxb(samples, setup="eye_to_hand")
+    Af, Bf = _filter_pairs(A, B, min_rot_deg=0.5)
+    X = _solve_ax_xb_park(Af, Bf)
+    dt, dR = se3_delta(X, T_base_cam_gt)
+    assert dt < 1.0, f"Park translation error {dt} mm"
+    assert dR < 0.1, f"Park rotation error {dR} deg"
+
+
+def test_handeye_tsai_recovers_T_base_cam():
+    """Tsai must use OpenCV-style P=2q_xyz, not raw rotvec."""
+    from rs_calib.domain.handeye import (
+        _filter_pairs,
+        _motion_pairs_axxb,
+        _solve_ax_xb_tsai,
+    )
+
+    samples, T_base_cam_gt = _eth_samples(np.random.default_rng(123), n=24)
+    A, B = _motion_pairs_axxb(samples, setup="eye_to_hand")
+    Af, Bf = _filter_pairs(A, B, min_rot_deg=0.5)
+    X = _solve_ax_xb_tsai(Af, Bf)
+    dt, dR = se3_delta(X, T_base_cam_gt)
+    assert dt < 2.0, f"Tsai translation error {dt} mm"
+    assert dR < 0.5, f"Tsai rotation error {dR} deg"
 
 
 def test_handeye_recovers_T_flange_cam():

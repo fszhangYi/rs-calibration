@@ -10,7 +10,6 @@ arm:
   robot_tcp_port: 54321
   num_joints: 6
   max_delta_deg: 5.0
-  # 关节空间速度（同 sensors-arm arm_abs_ramp.v_norm_rad_s）
   v_norm_rad_s: 0.02
   t_min_s: 0.1
   t_max_s: 30.0
@@ -18,7 +17,7 @@ arm:
   jog_joint_step_deg: 1.0
   jog_cart_step_m: 0.005
   jog_cart_step_deg: 2.0
-  cart_frame: flange
+  cart_frame: tcp
 tcp_xyz:
 - 0.0
 - 0.0
@@ -33,9 +32,14 @@ aruco:
   square_length_m: 0.04
   charuco_marker_length_m: 0.03
   min_charuco_corners: 6
-  T_flange_marker: null
+  # ETH fixture (session_20261022_193810 Park): xyz≈[2.3,-43.4,157.9]mm, rpy≈[90.7,2.5,-2.0]°
+  T_flange_marker:
+  - [0.99844, 0.043163, -0.035429, 0.0023]
+  - [-0.034866, -0.013732, -0.999298, -0.0434]
+  - [-0.043619, 0.998974, -0.012205, 0.1579]
+  - [0.0, 0.0, 0.0, 1.0]
 handeye:
-  setup: eye_to_hand
+  setup: eye_in_hand
   method: TSAI
   compare_methods: false
 convergence:
@@ -56,7 +60,7 @@ record:
   jpeg_quality: 90
 verify:
   axis_length_m: 0.05
-  show_tcp_axes: true
+  show_tcp_axes: false
   show_marker_error: true
 matrix_path:
   nx: 3
