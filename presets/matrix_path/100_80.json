@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "kind": "matrix_path_preset",
+  "name": "100_80",
+  "note": "",
+  "created_at": "2026-10-27T16:33:13.566033+08:00",
+  "params": {
+    "nx": 3,
+    "ny": 3,
+    "nz": 3,
+    "step_x_m": 0.1,
+    "step_y_m": 0.1,
+    "step_z_m": 0.1,
+    "n_rx": 1,
+    "n_ry": 3,
+    "n_rz": 3,
+    "step_rx_deg": 45.0,
+    "step_ry_deg": 45.0,
+    "step_rz_deg": 45.0,
+    "snake": true,
+    "dwell_s": 0.8,
+    "frame": "flange"
+  },
+  "spans": {
+    "x_span_m": 0.2,
+    "y_span_m": 0.2,
+    "z_span_m": 0.2,
+    "rx_span_deg": 0.0,
+    "ry_span_deg": 90.0,
+    "rz_span_deg": 90.0
+  },
+  "spans_mm_deg": {
+    "x_span_mm": 200.0,
+    "y_span_mm": 200.0,
+    "z_span_mm": 200.0,
+    "rx_span_deg": 0.0,
+    "ry_span_deg": 90.0,
+    "rz_span_deg": 90.0
+  },
+  "seed_xyzrpy": [
+    -0.36659961358949517,
+    0.04419935731054316,
+    0.5816995118153326,
+    -2.721841706536526,
+    0.2228789539787368,
+    0.6729987483970663
+  ],
+  "seed_xyzrpy_mm_deg": [
+    -366.59961358949516,
+    44.199357310543164,
+    581.6995118153326,
+    -155.9500422872285,
+    12.770023405272125,
+    38.559987900738676
+  ],
+  "n_waypoints": 243
+}

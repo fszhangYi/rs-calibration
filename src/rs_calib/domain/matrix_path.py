@@ -190,6 +190,19 @@ def generate_matrix_waypoints(
     return waypoints
 
 
+def spans_from_params(params: MatrixPathParams) -> dict[str, float]:
+    """Grid spans implied by N×step (centered), independent of seed."""
+    p = params.clamp()
+    return {
+        "x_span_m": float(max(0, p.nx - 1) * p.step_x_m),
+        "y_span_m": float(max(0, p.ny - 1) * p.step_y_m),
+        "z_span_m": float(max(0, p.nz - 1) * p.step_z_m),
+        "rx_span_deg": float(max(0, p.n_rx - 1) * p.step_rx_deg),
+        "ry_span_deg": float(max(0, p.n_ry - 1) * p.step_ry_deg),
+        "rz_span_deg": float(max(0, p.n_rz - 1) * p.step_rz_deg),
+    }
+
+
 def summarize_waypoints(waypoints: Sequence[MatrixWaypoint]) -> dict[str, Any]:
     if not waypoints:
         return {"n": 0}

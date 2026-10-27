@@ -96,18 +96,19 @@ class VerifySection:
 
 @dataclass
 class MatrixPathSection:
+    # Defaults from session_20261023_165554 coverage (XYZ≈0.1m incl. Z, Ry≈40° + Rz).
     nx: int = 3
     ny: int = 3
-    nz: int = 1
+    nz: int = 3
     step_x_m: float = 0.05
     step_y_m: float = 0.05
-    step_z_m: float = 0.03
+    step_z_m: float = 0.05
     n_rx: int = 1
     n_ry: int = 3
-    n_rz: int = 1
-    step_rx_deg: float = 10.0
-    step_ry_deg: float = 12.0
-    step_rz_deg: float = 10.0
+    n_rz: int = 3
+    step_rx_deg: float = 20.0
+    step_ry_deg: float = 20.0
+    step_rz_deg: float = 20.0
     snake: bool = True
     dwell_s: float = 0.8
     frame: str = "flange"

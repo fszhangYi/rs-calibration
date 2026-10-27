@@ -53,6 +53,20 @@ class JogCartBody(BaseModel):
     sign: int
 
 
+class MovePoseBody(BaseModel):
+    """Target pose. Prefer pose_mm_deg CSV (mm,°); or discrete mm/deg; or xyzrpy (m,rad)."""
+    pose_mm_deg: Optional[str] = None  # "x,y,z,rx,ry,rz" — mm + deg
+    x_mm: Optional[float] = None
+    y_mm: Optional[float] = None
+    z_mm: Optional[float] = None
+    rx_deg: Optional[float] = None
+    ry_deg: Optional[float] = None
+    rz_deg: Optional[float] = None
+    xyzrpy: Optional[list[float]] = None  # m, rad
+    frame: str = "flange"
+    v_norm_rad_s: Optional[float] = None
+
+
 class TcpBody(BaseModel):
     tcp_xyz: list[float]
 
@@ -94,6 +108,14 @@ class HandeyeSetupBody(BaseModel):
     dual_backends: Optional[bool] = None
 
 
+class ConvergenceBody(BaseModel):
+    min_samples: Optional[int] = None
+    recompute_every_n: Optional[int] = None
+    max_delta_t_mm: Optional[float] = None
+    max_delta_R_deg: Optional[float] = None
+    stable_count: Optional[int] = None
+
+
 class MatrixPlanBody(BaseModel):
     nx: Optional[int] = None
     ny: Optional[int] = None
@@ -111,6 +133,34 @@ class MatrixPlanBody(BaseModel):
     dwell_s: Optional[float] = None
     frame: Optional[str] = None
     seed_xyzrpy: Optional[list[float]] = None
+
+
+class MatrixPresetSaveBody(BaseModel):
+    name: str
+    note: Optional[str] = None
+    # If omitted, use last planned seed / current arm pose
+    seed_xyzrpy: Optional[list[float]] = None
+    nx: Optional[int] = None
+    ny: Optional[int] = None
+    nz: Optional[int] = None
+    step_x_m: Optional[float] = None
+    step_y_m: Optional[float] = None
+    step_z_m: Optional[float] = None
+    n_rx: Optional[int] = None
+    n_ry: Optional[int] = None
+    n_rz: Optional[int] = None
+    step_rx_deg: Optional[float] = None
+    step_ry_deg: Optional[float] = None
+    step_rz_deg: Optional[float] = None
+    snake: Optional[bool] = None
+    dwell_s: Optional[float] = None
+    frame: Optional[str] = None
+
+
+class MatrixPresetLoadBody(BaseModel):
+    name: str
+    # If true, also regenerate waypoints with the saved seed
+    replan: bool = True
 
 
 def create_app() -> FastAPI:
@@ -140,6 +190,13 @@ def create_app() -> FastAPI:
         "thread": None,
         "stopped_for_converge": False,
         "session": None,
+    }
+    move_pose_state: dict[str, Any] = {
+        "running": False,
+        "cancel": False,
+        "thread": None,
+        "last_error": None,
+        "target_xyzrpy": None,
     }
 
     def _restart_record_for_matrix() -> dict[str, Any]:
@@ -276,6 +333,7 @@ def create_app() -> FastAPI:
             "preview_serial": camera.preview_serial,
             "arm_connected": arm.adapter.is_connected,
             "armed": arm.adapter.armed,
+            "move_pose_running": bool(move_pose_state.get("running")),
             "recording": record.recording,
             "live": live.enabled and not camera.is_multi,
             "has_session": record.session_dir is not None,
@@ -322,6 +380,66 @@ def create_app() -> FastAPI:
                 "dual_backends": bool(getattr(cfg.handeye, "dual_backends", False)),
             },
             "opencv_handeye": opencv_handeye_status(),
+            "matrix_path": cfg.matrix_path.to_dict(),
+            "convergence": {
+                "min_samples": cfg.convergence.min_samples,
+                "recompute_every_n": cfg.convergence.recompute_every_n,
+                "max_delta_t_mm": cfg.convergence.max_delta_t_mm,
+                "max_delta_R_deg": cfg.convergence.max_delta_R_deg,
+                "stable_count": cfg.convergence.stable_count,
+            },
+        }
+
+    @app.post("/api/convergence")
+    def set_convergence(body: ConvergenceBody) -> dict:
+        """Update live convergence thresholds; syncs LiveCalibService.tracker immediately."""
+        from rs_calib.config.store import save_config
+
+        c = cfg.convergence
+        if body.min_samples is not None:
+            v = int(body.min_samples)
+            if not (3 <= v <= 1000):
+                raise HTTPException(400, "min_samples 范围 3~1000")
+            c.min_samples = v
+        if body.recompute_every_n is not None:
+            v = int(body.recompute_every_n)
+            if not (1 <= v <= 100):
+                raise HTTPException(400, "recompute_every_n 范围 1~100")
+            c.recompute_every_n = v
+        if body.max_delta_t_mm is not None:
+            v = float(body.max_delta_t_mm)
+            if not (0.01 <= v <= 100.0):
+                raise HTTPException(400, "max_delta_t_mm 范围 0.01~100")
+            c.max_delta_t_mm = v
+        if body.max_delta_R_deg is not None:
+            v = float(body.max_delta_R_deg)
+            if not (0.01 <= v <= 30.0):
+                raise HTTPException(400, "max_delta_R_deg 范围 0.01~30")
+            c.max_delta_R_deg = v
+        if body.stable_count is not None:
+            v = int(body.stable_count)
+            if not (2 <= v <= 50):
+                raise HTTPException(400, "stable_count 范围 2~50")
+            c.stable_count = v
+
+        # Keep tracker thresholds in sync (does not clear lock / samples).
+        live.tracker.params.min_samples = int(c.min_samples)
+        live.tracker.params.max_delta_t_mm = float(c.max_delta_t_mm)
+        live.tracker.params.max_delta_R_deg = float(c.max_delta_R_deg)
+        live.tracker.params.stable_count = int(c.stable_count)
+        try:
+            save_config(cfg)
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "ok": True,
+            "convergence": {
+                "min_samples": c.min_samples,
+                "recompute_every_n": c.recompute_every_n,
+                "max_delta_t_mm": c.max_delta_t_mm,
+                "max_delta_R_deg": c.max_delta_R_deg,
+                "stable_count": c.stable_count,
+            },
         }
 
     @app.post("/api/handeye/setup")
@@ -617,6 +735,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/arm/stop")
     def arm_stop() -> dict:
+        move_pose_state["cancel"] = True
         res = arm.stop()
         if not isinstance(res, Ok):
             raise HTTPException(400, str(res.error))
@@ -628,9 +747,13 @@ def create_app() -> FastAPI:
             return {"ok": False, "connected": False}
         st = arm.poll()
         pose = None
+        pose_tcp = None
         if st.ok and st.joints_rad is not None:
             _, xyzrpy = arm.flange_from_joints(st.joints_rad)
             pose = xyzrpy
+            tcp_res = arm.current_xyzrpy(frame="tcp")
+            if isinstance(tcp_res, Ok):
+                pose_tcp = tcp_res.value
         return {
             "ok": st.ok,
             "connected": True,
@@ -638,7 +761,114 @@ def create_app() -> FastAPI:
             "endpoint": st.endpoint,
             "joints_rad": st.joints_rad,
             "pose_xyzrpy": pose,
+            "pose_xyzrpy_tcp": pose_tcp,
+            "move_pose_running": bool(move_pose_state.get("running")),
             "error": st.error,
+        }
+
+    @app.post("/api/arm/move_pose")
+    def arm_move_pose(body: MovePoseBody) -> dict:
+        import math
+
+        if not arm.adapter.is_connected:
+            raise HTTPException(400, "请先连接机械臂")
+        if not arm.adapter.armed:
+            raise HTTPException(400, "请先 Arm 上使能")
+        if matrix_state.get("running"):
+            raise HTTPException(400, "矩阵走位进行中，无法下发位姿")
+        t_old = move_pose_state.get("thread")
+        if move_pose_state.get("running") and t_old is not None and t_old.is_alive():
+            raise HTTPException(400, "正在下发位姿，请先 Stop")
+        move_pose_state["running"] = False
+        move_pose_state["thread"] = None
+
+        frame = "tcp" if str(body.frame).lower() == "tcp" else "flange"
+        if body.xyzrpy is not None and len(body.xyzrpy) >= 6:
+            target = [float(x) for x in body.xyzrpy[:6]]
+        elif body.pose_mm_deg is not None and str(body.pose_mm_deg).strip():
+            raw = str(body.pose_mm_deg).replace("，", ",").replace("|", ",")
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
+            if len(parts) < 6:
+                raise HTTPException(
+                    400,
+                    "pose_mm_deg 需 6 个数：x,y,z,rx,ry,rz（mm / °），如 -298.3, -160.6, 519.7, -175.64, -1.23, 85.40",
+                )
+            try:
+                nums = [float(p) for p in parts[:6]]
+            except ValueError as e:
+                raise HTTPException(400, f"pose_mm_deg 无法解析: {e}") from e
+            target = [
+                nums[0] / 1000.0,
+                nums[1] / 1000.0,
+                nums[2] / 1000.0,
+                math.radians(nums[3]),
+                math.radians(nums[4]),
+                math.radians(nums[5]),
+            ]
+        else:
+            fields = (body.x_mm, body.y_mm, body.z_mm, body.rx_deg, body.ry_deg, body.rz_deg)
+            if any(v is None for v in fields):
+                raise HTTPException(
+                    400,
+                    "请填写 pose_mm_deg（mm/° CSV），或 x/y/z(mm)+rx/ry/rz(°)，或 xyzrpy(m,rad)",
+                )
+            target = [
+                float(body.x_mm) / 1000.0,
+                float(body.y_mm) / 1000.0,
+                float(body.z_mm) / 1000.0,
+                math.radians(float(body.rx_deg)),
+                math.radians(float(body.ry_deg)),
+                math.radians(float(body.rz_deg)),
+            ]
+
+        v_override = body.v_norm_rad_s
+        if v_override is not None:
+            vv = float(v_override)
+            if not (1e-4 <= vv <= 5.0):
+                raise HTTPException(400, "v_norm_rad_s 范围应为 0.0001~5")
+
+        move_pose_state["cancel"] = False
+        move_pose_state["last_error"] = None
+        move_pose_state["target_xyzrpy"] = target
+        move_pose_state["running"] = True
+
+        def _worker() -> None:
+            old_v = float(arm.cfg.arm.v_norm_rad_s)
+            try:
+                if v_override is not None:
+                    arm.cfg.arm.v_norm_rad_s = float(v_override)
+                res = arm.move_to_xyzrpy(
+                    target,
+                    frame=frame,
+                    cancel_cb=lambda: bool(move_pose_state.get("cancel")),
+                )
+                if not isinstance(res, Ok):
+                    move_pose_state["last_error"] = str(res.error)
+            except Exception as e:  # noqa: BLE001
+                move_pose_state["last_error"] = str(e)
+            finally:
+                arm.cfg.arm.v_norm_rad_s = old_v
+                move_pose_state["running"] = False
+                move_pose_state["thread"] = None
+
+        th = threading.Thread(target=_worker, name="arm-move-pose", daemon=True)
+        move_pose_state["thread"] = th
+        th.start()
+        return {
+            "ok": True,
+            "started": True,
+            "frame": frame,
+            "xyzrpy": target,
+            "v_norm_rad_s": float(v_override) if v_override is not None else float(arm.cfg.arm.v_norm_rad_s),
+        }
+
+    @app.get("/api/arm/move_pose/status")
+    def arm_move_pose_status() -> dict:
+        return {
+            "ok": True,
+            "running": bool(move_pose_state.get("running")),
+            "last_error": move_pose_state.get("last_error"),
+            "target_xyzrpy": move_pose_state.get("target_xyzrpy"),
         }
 
     @app.post("/api/arm/jog_joint")
@@ -879,9 +1109,12 @@ def create_app() -> FastAPI:
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
-    def _matrix_params_from_body(body: MatrixPlanBody) -> MatrixPathParams:
+    def _matrix_params_from_body(body: BaseModel) -> MatrixPathParams:
         base = cfg.matrix_path.to_dict()
-        overrides = {k: v for k, v in body.model_dump().items() if v is not None and k != "seed_xyzrpy"}
+        skip = {"seed_xyzrpy", "name", "note", "replan"}
+        overrides = {
+            k: v for k, v in body.model_dump().items() if v is not None and k not in skip
+        }
         base.update(overrides)
         return MatrixPathParams.from_dict(base)
 
@@ -900,12 +1133,70 @@ def create_app() -> FastAPI:
             "ok": True,
             "seed_xyzrpy": data["seed_xyzrpy"],
             "summary": data["summary"],
+            "spans": data.get("spans"),
             "params": data["params"],
             "waypoints": [
                 {"index": w.index, "label": w.label, "xyzrpy": w.xyzrpy}
                 for w in data["waypoints"]
             ],
         }
+
+    @app.get("/api/matrix/presets")
+    def matrix_presets() -> dict:
+        return {"ok": True, "presets": matrix.list_presets(), "dir": str(matrix.preset_dir())}
+
+    @app.post("/api/matrix/presets/save")
+    def matrix_preset_save(body: MatrixPresetSaveBody) -> dict:
+        params = _matrix_params_from_body(body)  # type: ignore[arg-type]
+        seed = body.seed_xyzrpy
+        if seed is None:
+            seed = matrix_state.get("seed")
+        if seed is None:
+            seed_res = matrix.capture_seed(params.frame)
+            if not isinstance(seed_res, Ok):
+                raise HTTPException(400, f"无中心位姿可保存: {seed_res.error}")
+            seed = seed_res.value
+        res = matrix.save_preset(body.name, params, seed, note=body.note or "")
+        if not isinstance(res, Ok):
+            raise HTTPException(400, str(res.error))
+        return res.value
+
+    @app.post("/api/matrix/presets/load")
+    def matrix_preset_load(body: MatrixPresetLoadBody) -> dict:
+        res = matrix.load_preset(body.name)
+        if not isinstance(res, Ok):
+            raise HTTPException(400, str(res.error))
+        data = res.value
+        out: dict = {
+            "ok": True,
+            "path": data["path"],
+            "file": data["file"],
+            "preset": data["preset"],
+            "params": data["params"],
+            "spans": data["spans"],
+            "seed_xyzrpy": data["seed_xyzrpy"],
+        }
+        if body.replan:
+            plan_res = matrix.plan(
+                MatrixPathParams.from_dict(data["params"]),
+                seed_xyzrpy=data["seed_xyzrpy"],
+            )
+            if not isinstance(plan_res, Ok):
+                raise HTTPException(400, str(plan_res.error))
+            pdata = plan_res.value
+            matrix_state["waypoints"] = pdata["waypoints"]
+            matrix_state["seed"] = pdata["seed_xyzrpy"]
+            matrix_state["params"] = pdata["params"]
+            matrix_state["last_error"] = None
+            out["summary"] = pdata["summary"]
+            out["waypoints"] = [
+                {"index": w.index, "label": w.label, "xyzrpy": w.xyzrpy}
+                for w in pdata["waypoints"]
+            ]
+            out["replanned"] = True
+        else:
+            out["replanned"] = False
+        return out
 
     @app.post("/api/matrix/start")
     def matrix_start() -> dict:

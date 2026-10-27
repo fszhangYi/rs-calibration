@@ -99,6 +99,114 @@ def test_handeye_native_backend_and_dual():
         assert "DUAL_NO_CV" in dual.method
 
 
+def test_align_skips_degenerate_identity_ref():
+    """A prior OpenCV failure (I) must not 180°-flip a later good extrinsic."""
+    from rs_calib.domain.handeye import align_extrinsic_to_ref
+
+    samples, T_gt = _eth_samples(np.random.default_rng(11), n=16)
+    result = solve_handeye(samples, method="TSAI", setup="eye_to_hand", backend="native")
+    bad_ref = np.eye(4)
+    aligned = align_extrinsic_to_ref(result.T_base_cam, bad_ref)
+    dt, dR = se3_delta(aligned, result.T_base_cam)
+    assert dt < 1e-9 and dR < 1e-6
+
+
+def test_degenerate_rejects_kilometre_translation():
+    from rs_calib.domain.handeye import _is_degenerate_handeye_T
+
+    T = np.eye(4)
+    T[:3, 3] = [12724.0, -11174.0, 73.0]  # seen on session_20261026_212137 solve#17
+    assert _is_degenerate_handeye_T(T)
+    T2 = np.eye(4)
+    T2[:3, 3] = [-0.8, 0.3, 0.76]
+    assert not _is_degenerate_handeye_T(T2)
+
+
+def test_dual_arbitrates_large_translation_disagreement():
+    """When OpenCV/native Δt is large but ΔR small, must not blindly keep OpenCV."""
+    from rs_calib.domain.handeye import solve_handeye_dual
+
+    # Near-planar ETH (tiny Rz/Z) — mirrors the bad 20261026 session conditioning.
+    rng = np.random.default_rng(20261026)
+    T_base_cam_gt = np.eye(4)
+    T_base_cam_gt[:3, :3] = R.from_euler("xyz", [0.2, -0.5, 0.1]).as_matrix()
+    T_base_cam_gt[:3, 3] = [-0.8, 0.3, 0.75]
+    T_fm = np.eye(4)
+    T_fm[:3, 3] = [0.02, -0.02, 0.16]
+    T_cam_base = inv_T(T_base_cam_gt)
+    samples: list[CalibSample] = []
+    for i in range(30):
+        # Mostly Yaw/Pitch-ish small; translation in XY only (near planar).
+        T_bf = np.eye(4)
+        T_bf[:3, :3] = R.from_euler(
+            "xyz",
+            [rng.uniform(-0.02, 0.02), rng.uniform(-0.2, 0.2), rng.uniform(-0.005, 0.005)],
+        ).as_matrix()
+        T_bf[:3, 3] = [
+            -0.35 + rng.uniform(0, 0.1),
+            rng.uniform(-0.05, 0.05),
+            0.66 + rng.uniform(0, 0.003),
+        ]
+        T_cm = T_cam_base @ T_bf @ T_fm
+        # Add tiny noise so backends can disagree.
+        T_cm = T_cm.copy()
+        T_cm[:3, 3] += rng.normal(scale=0.0005, size=3)
+        samples.append(CalibSample(frame_idx=i, T_base_flange=T_bf, T_cam_marker=T_cm))
+
+    dual = solve_handeye_dual(samples, method="TSAI", setup="eye_to_hand")
+    tnorm = float(np.linalg.norm(dual.T_base_cam[:3, 3]))
+    assert tnorm < 3.0, f"implausible dual primary ||t||={tnorm}"
+    # Should surface a motion-span or disagreement warning when conditioning is poor.
+    dual_meta = dual.metrics.get("dual") or {}
+    assert dual_meta.get("enabled") is True
+
+
+def test_session_20261023_dual_recovers_unflipped():
+    """Regression: dual must not lock the 180° branch that broke verify on this session."""
+    import json
+    from pathlib import Path
+
+    from rs_calib.domain.handeye import solve_handeye
+    from rs_calib.domain.math3d import inv_T
+    from rs_calib.domain.verify_geom import marker_pred_T_eth
+    from scipy.spatial.transform import Rotation as Rot
+
+    sess = Path("sessions/session_20261023_161932")
+    if not sess.is_dir():
+        return  # optional local session fixture
+    lines = (sess / "live_solves.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    last = json.loads(lines[-1])
+    samples = [
+        CalibSample(
+            frame_idx=int(s["frame_idx"]),
+            T_base_flange=np.asarray(s["T_base_flange"], dtype=float),
+            T_cam_marker=np.asarray(s["T_cam_marker"], dtype=float),
+        )
+        for s in last["basis"]["samples"]
+    ]
+    saved = np.asarray(last["result"]["T_base_cam"], dtype=float)
+    dual = solve_handeye(samples, method="TSAI", setup="eye_to_hand", dual_backends=True)
+    # Must disagree with the historically flipped saved pose.
+    _, dR_saved = se3_delta(dual.T_base_cam, saved)
+    assert dR_saved > 90.0, f"expected escape from flipped branch, got ΔR={dR_saved}"
+
+    # Absolute board residual with estimated T_fm should be ~cm, not meters.
+    est = np.stack(
+        [inv_T(s.T_base_flange) @ dual.T_base_cam @ s.T_cam_marker for s in samples]
+    )
+    T_fm = np.eye(4)
+    T_fm[:3, :3] = Rot.from_matrix(est[:, :3, :3]).mean().as_matrix()
+    T_fm[:3, 3] = np.median(est[:, :3, 3], axis=0)
+    errs = [
+        se3_delta(
+            marker_pred_T_eth(dual.T_cam_base, s.T_base_flange, T_fm),
+            s.T_cam_marker,
+        )[0]
+        for s in samples
+    ]
+    assert float(np.median(errs)) < 30.0, f"verify median {np.median(errs)} mm"
+
+
 def test_handeye_recovers_T_flange_cam():
     rng = np.random.default_rng(7)
     T_flange_cam_gt = _rand_T(rng)

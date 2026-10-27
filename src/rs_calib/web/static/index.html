@@ -11,19 +11,23 @@
   <script src="/assets/matrix_path_viz.js?v=20261021b"></script>
   <style>
     :root {
-      --bg: #0f1419;
-      --panel: #1a222c;
+      --bg: #0e1318;
+      --panel: #161d26;
+      --panel-2: #121820;
       --line: #2a3542;
-      --text: #e7eef6;
-      --muted: #8b9aab;
+      --line-soft: #24303c;
+      --text: #e8eef5;
+      --muted: #8a97a8;
       --accent: #3db8a0;
+      --accent-dim: #1e4a42;
       --danger: #d65a5a;
       --fs: 12px;
       --fs-sm: 11px;
-      --fs-title: 13px;
-      --pad: 8px;
-      --gap: 6px;
-      --r: 8px;
+      --fs-title: 12px;
+      --pad: 10px;
+      --gap: 8px;
+      --r: 10px;
+      --ctrl-h: 28px;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -34,9 +38,9 @@
     body {
       font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
       font-size: var(--fs);
-      line-height: 1.35;
-      background: radial-gradient(900px 420px at 8% -8%, #1a3a36 0%, transparent 50%),
-                  radial-gradient(700px 380px at 100% 0%, #243048 0%, transparent 45%),
+      line-height: 1.4;
+      background: radial-gradient(900px 420px at 8% -8%, #163530 0%, transparent 52%),
+                  radial-gradient(700px 380px at 100% 0%, #1c2838 0%, transparent 45%),
                   var(--bg);
       color: var(--text);
       display: flex;
@@ -44,18 +48,19 @@
     }
     header {
       flex: 0 0 auto;
-      padding: 6px 12px;
+      padding: 8px 14px;
       border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 88%, transparent);
       display: flex;
       align-items: center;
       gap: 10px;
-      min-height: 32px;
+      min-height: 40px;
     }
     header h1 {
       margin: 0;
       font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
+      font-weight: 650;
+      letter-spacing: 0.03em;
       white-space: nowrap;
     }
     header .meta {
@@ -69,14 +74,14 @@
       flex: 1 1 auto;
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(260px, 22vw) minmax(0, 1fr) minmax(240px, 20vw);
+      grid-template-columns: minmax(300px, 26vw) minmax(0, 1fr) minmax(240px, 20vw);
       gap: var(--gap);
       padding: var(--gap);
       max-width: none;
       width: 100%;
     }
     .card {
-      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      background: color-mix(in srgb, var(--panel) 96%, transparent);
       border: 1px solid var(--line);
       border-radius: var(--r);
       padding: var(--pad);
@@ -84,13 +89,11 @@
       overflow: auto;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
     }
-    .card.preview-card {
-      overflow: hidden;
-    }
+    .card.preview-card { overflow: hidden; }
     .card h2 {
-      margin: 4px 0 2px;
+      margin: 6px 0 2px;
       font-size: var(--fs-title);
       color: var(--accent);
       font-weight: 600;
@@ -100,35 +103,165 @@
     .meta {
       color: var(--muted);
       font-size: var(--fs-sm);
-      line-height: 1.3;
+      line-height: 1.35;
       word-break: break-all;
       white-space: pre-line;
     }
     .row {
       display: flex;
-      gap: 4px;
+      gap: 6px;
       flex-wrap: wrap;
       align-items: center;
       margin: 0;
       flex: 0 0 auto;
     }
+
+    /* —— Left sidebar —— */
+    .side-left {
+      gap: 10px;
+      padding: 10px;
+      scrollbar-gutter: stable;
+    }
+    .side-left::-webkit-scrollbar { width: 8px; }
+    .side-left::-webkit-scrollbar-thumb {
+      background: #2a3644;
+      border-radius: 8px;
+    }
+    .sect {
+      flex: 0 0 auto;
+      background: var(--panel-2);
+      border: 1px solid var(--line-soft);
+      border-radius: 9px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sect-h {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+    .sect-h::before {
+      content: "";
+      width: 3px;
+      height: 12px;
+      border-radius: 2px;
+      background: var(--accent);
+      flex: 0 0 auto;
+    }
+    .sect-h .tag {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0;
+    }
+    .subblock {
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      padding: 8px;
+      background: #0e141b;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .subhead {
+      margin: 0;
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: none;
+      letter-spacing: 0.04em;
+    }
+    .fields {
+      display: grid;
+      gap: 6px 8px;
+      align-items: end;
+    }
+    .fields.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fields.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .fields.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      align-items: stretch;
+      min-width: 0;
+    }
+    .field > span {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .field input,
+    .field select {
+      width: 100%;
+      min-width: 0;
+      flex: none;
+    }
+    .field-actions {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      min-width: 0;
+    }
+    .field-actions.stretch > * { flex: 1; }
+    .btn-row {
+      display: grid;
+      gap: 6px;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+    }
+    .btn-row.wrap {
+      grid-auto-flow: dense;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-auto-columns: unset;
+    }
+    .btn-row.wrap > .span-2 { grid-column: span 2; }
+
     button, select, input {
       font-family: inherit;
       font-size: var(--fs);
-      border-radius: 6px;
+      border-radius: 7px;
       border: 1px solid var(--line);
-      background: #121820;
+      background: #0c1117;
       color: var(--text);
-      padding: 3px 7px;
-      height: 26px;
+      padding: 4px 8px;
+      height: var(--ctrl-h);
+    }
+    input[type="number"] {
+      font-variant-numeric: tabular-nums;
+      font-family: "JetBrains Mono", "Consolas", ui-monospace, monospace;
+      font-size: 11px;
+    }
+    #poseCsv {
+      width: 100%;
+      flex: none;
+      font-family: "JetBrains Mono", "Consolas", ui-monospace, monospace;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
     }
     button {
       cursor: pointer;
       background: linear-gradient(180deg, #243040, #1a222c);
       white-space: nowrap;
+      transition: border-color .12s ease, background .12s ease, opacity .12s ease;
     }
     button:hover { border-color: var(--accent); }
-    button.primary { background: #1e4a42; border-color: var(--accent); }
+    button.primary {
+      background: linear-gradient(180deg, #245a50, var(--accent-dim));
+      border-color: color-mix(in srgb, var(--accent) 70%, #2a3542);
+    }
     button.danger { border-color: var(--danger); color: #ffd0d0; }
     button:disabled {
       opacity: 0.38;
@@ -146,20 +279,24 @@
       color: #ffd0d0;
     }
     select, input { flex: 1; min-width: 0; }
-    /* Multi-select list: must not inherit single-line select height:26px, nor flex-shrink away. */
+    input:focus, select:focus, button:focus-visible {
+      outline: none;
+      border-color: color-mix(in srgb, var(--accent) 75%, var(--line));
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
     #camList {
       width: 100%;
       flex: 0 0 auto;
-      flex-grow: 0;
-      flex-shrink: 0;
-      height: 96px;
-      min-height: 96px;
-      max-height: 96px;
+      height: 88px;
+      min-height: 88px;
+      max-height: 88px;
       margin: 0;
       font-size: var(--fs-sm);
-      padding: 2px;
-      line-height: 1.35;
+      padding: 4px;
+      line-height: 1.4;
       overflow: auto;
+      border-radius: 7px;
+      background: #0c1117;
     }
     .tabs {
       display: flex;
@@ -169,11 +306,11 @@
     }
     .tabs button {
       flex: 1;
-      height: 28px;
+      height: 30px;
       background: #121820;
     }
     .tabs button.active {
-      background: #1e4a42;
+      background: var(--accent-dim);
       border-color: var(--accent);
       color: #dffaf3;
     }
@@ -183,9 +320,7 @@
       min-height: 0;
       flex-direction: column;
     }
-    .tab-panel.active {
-      display: flex;
-    }
+    .tab-panel.active { display: flex; }
     #preview {
       width: 100%;
       flex: 1 1 auto;
@@ -198,14 +333,20 @@
     }
     .grid-jog {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 3px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 5px;
       flex: 0 0 auto;
     }
     .grid-jog button {
-      padding: 2px 4px;
-      font-size: var(--fs-sm);
-      height: 24px;
+      padding: 0 4px;
+      font-size: 11px;
+      font-weight: 600;
+      height: 30px;
+      letter-spacing: 0.02em;
+      background: #151c26;
+    }
+    .grid-jog button:hover {
+      background: #1c2834;
     }
     #log {
       flex: 1 1 auto;
@@ -243,6 +384,19 @@
       margin: 0;
       color: var(--muted);
       font-size: 10px;
+      line-height: 1.35;
+    }
+    .stat-line {
+      margin: 0;
+      padding: 6px 8px;
+      border-radius: 6px;
+      background: #0c1117;
+      border: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      word-break: break-all;
+      white-space: pre-line;
     }
     @media (max-width: 1100px) {
       html, body { overflow: auto; }
@@ -264,9 +418,7 @@
       overflow: hidden;
       position: relative;
     }
-    #tabPreview, #tabViz {
-      min-height: 0;
-    }
+    #tabPreview, #tabViz { min-height: 0; }
     #matrixStageHint {
       position: absolute; left: 8px; bottom: 8px; z-index: 2;
       font-size: 11px; color: var(--muted);
@@ -283,108 +435,168 @@
     <button type="button" class="danger" id="btnSafeExit" onclick="safeExit()" title="关闭后端服务并退出本页">安全退出</button>
   </header>
   <main>
-    <section class="card">
-      <h2>相机</h2>
-      <div class="row">
-        <button id="btnScan" class="primary" onclick="scanCams()">扫描</button>
-        <button id="btnOpenCam" onclick="openCam()">开流</button>
-        <button id="btnCloseCam" onclick="closeCam()">关流</button>
+    <section class="card side-left">
+      <div class="sect">
+        <h2 class="sect-h">相机</h2>
+        <div class="btn-row">
+          <button id="btnScan" class="primary" onclick="scanCams()">扫描</button>
+          <button id="btnOpenCam" onclick="openCam()">开流</button>
+          <button id="btnCloseCam" onclick="closeCam()">关流</button>
+        </div>
+        <select id="camList" size="4" multiple></select>
+        <p class="hint">Ctrl/⌘ 多选开流；多相机录制多视频，禁用实时求解</p>
+        <div id="intr" class="stat-line">内参: —</div>
       </div>
-      <select id="camList" size="4" multiple></select>
-      <p class="hint">Ctrl/⌘ 多选开流；多相机录制多视频，禁用实时求解</p>
-      <div id="intr" class="meta">内参: —</div>
 
-      <h2>标定板 ChArUco / ArUco</h2>
-      <div class="row">
-        <select id="boardType" title="板类型" style="flex:0 0 auto;width:96px">
-          <option value="charuco">charuco</option>
-          <option value="aruco">aruco</option>
-        </select>
-        <input id="arucoDict" placeholder="DICT_5X5_50" title="字典" style="flex:1" />
-      </div>
-      <div class="row" id="charucoRow">
-        <input id="sqX" type="number" min="2" max="50" step="1" title="squares_x" style="width:3.2em" />
-        <span class="hint">×</span>
-        <input id="sqY" type="number" min="2" max="50" step="1" title="squares_y" style="width:3.2em" />
-        <input id="sqLen" type="number" min="1" max="500" step="1" title="格边长 mm" style="width:4em" />
-        <span class="hint">mm格</span>
-      </div>
-      <div class="row">
-        <input id="markerId" type="number" min="0" max="10000" step="1" title="ArUco marker id" style="width:4em;display:none" />
-        <span class="hint" id="markerIdHint" style="display:none">id</span>
-        <input id="mkLen" type="number" min="1" max="500" step="1" title="码边长 mm" style="width:4em" />
-        <span class="hint">mm码</span>
+      <div class="sect">
+        <h2 class="sect-h">标定板 <span class="tag">ChArUco / ArUco</span></h2>
+        <div class="fields cols-2">
+          <label class="field"><span>板类型</span>
+            <select id="boardType" title="板类型">
+              <option value="charuco">charuco</option>
+              <option value="aruco">aruco</option>
+            </select></label>
+          <label class="field"><span>字典</span>
+            <input id="arucoDict" placeholder="DICT_5X5_50" title="字典" /></label>
+        </div>
+        <div class="fields cols-3" id="charucoRow">
+          <label class="field"><span>格数 X</span>
+            <input id="sqX" type="number" min="2" max="50" step="1" title="squares_x" /></label>
+          <label class="field"><span>格数 Y</span>
+            <input id="sqY" type="number" min="2" max="50" step="1" title="squares_y" /></label>
+          <label class="field"><span>格边长 mm</span>
+            <input id="sqLen" type="number" min="1" max="500" step="1" title="格边长 mm" /></label>
+        </div>
+        <div class="fields cols-2" id="markerMkRow">
+          <label class="field" id="markerIdField" style="display:none"><span id="markerIdHint">Marker id</span>
+            <input id="markerId" type="number" min="0" max="10000" step="1" title="ArUco marker id" /></label>
+          <label class="field"><span>码边长 mm</span>
+            <input id="mkLen" type="number" min="1" max="500" step="1" title="码边长 mm" /></label>
+        </div>
         <button class="primary" onclick="saveAruco()">应用板</button>
+        <p class="hint" id="boardHint">ChArUco：格数 × 格边长 + 码边长（码须小于格）</p>
       </div>
-      <p class="hint" id="boardHint">ChArUco：格数 × 格边长 + 码边长（码须小于格）</p>
 
-      <h2>机械臂</h2>
-      <div class="row">
-        <input id="armIp" placeholder="机器人 IP" />
-        <button id="btnArmConn" class="primary" onclick="connectArm()">连接</button>
-        <button id="btnArmDisc" onclick="disconnectArm()">断开</button>
+      <div class="sect">
+        <h2 class="sect-h">机械臂</h2>
+        <div class="row">
+          <input id="armIp" placeholder="机器人 IP" />
+          <button id="btnArmConn" class="primary" onclick="connectArm()">连接</button>
+          <button id="btnArmDisc" onclick="disconnectArm()">断开</button>
+        </div>
+        <div class="btn-row">
+          <button id="btnArmOn" onclick="armOn()">Arm</button>
+          <button id="btnArmOff" onclick="armOff()">Disarm</button>
+          <button id="btnArmStop" class="danger" onclick="armStop()">Stop</button>
+        </div>
+        <div id="armState" class="stat-line">臂状态: —</div>
+
+        <div class="subblock">
+          <div class="subhead">点动步进</div>
+          <div class="fields cols-4">
+            <label class="field"><span>关节 °</span>
+              <input id="jogJointDeg" type="number" min="0.01" max="30" step="0.1" title="关节点动步进" /></label>
+            <label class="field"><span>平移 mm</span>
+              <input id="jogCartMm" type="number" min="0.01" max="100" step="0.5" title="笛卡尔平移步进" /></label>
+            <label class="field"><span>姿态 °</span>
+              <input id="jogCartDeg" type="number" min="0.01" max="30" step="0.1" title="笛卡尔姿态步进" /></label>
+            <label class="field"><span>参考系</span>
+              <select id="cartFrame" title="笛卡尔参考系">
+                <option value="flange">flange</option>
+                <option value="tcp">tcp</option>
+              </select></label>
+          </div>
+          <div class="subhead">分段运动 · 下发 / 矩阵共用</div>
+          <div class="fields cols-4">
+            <label class="field"><span>maxΔq °</span>
+              <input id="maxDeltaDeg" type="number" min="0.01" max="45" step="0.5" title="单步最大关节角" /></label>
+            <label class="field"><span>速度 rad/s</span>
+              <input id="vNorm" type="number" min="0.001" max="5" step="0.01" title="关节速度 v_norm" /></label>
+            <label class="field"><span>t_min s</span>
+              <input id="tMin" type="number" min="0.02" max="30" step="0.05" title="最短分段时间" /></label>
+            <label class="field"><span>t_max s</span>
+              <input id="tMax" type="number" min="0.1" max="30" step="1" title="最长分段时间" /></label>
+          </div>
+          <button class="primary" onclick="saveJogSteps()">应用步进与分段参数</button>
+        </div>
+
+        <div class="subblock">
+          <div class="subhead">关节点动</div>
+          <div class="grid-jog" id="jointJog"></div>
+          <div class="subhead">笛卡尔点动</div>
+          <div class="grid-jog" id="cartJog"></div>
+        </div>
+
+        <div class="subblock">
+          <div class="subhead">下发位姿 · x,y,z,rx,ry,rz（mm / °）</div>
+          <label class="field">
+            <span>位姿 CSV · 与「复制位姿」同格式</span>
+            <input id="poseCsv" type="text" spellcheck="false"
+              placeholder="-298.3, -160.6, 519.7, -175.64, -1.23, 85.40"
+              title="x,y,z(mm), rx,ry,rz(°) 逗号分隔" />
+          </label>
+          <div class="fields cols-2">
+            <label class="field"><span>目标系</span>
+              <select id="poseFrame" title="目标坐标系">
+                <option value="flange">flange</option>
+                <option value="tcp">tcp</option>
+              </select></label>
+            <label class="field"><span>本次速度 rad/s</span>
+              <input id="poseVNorm" type="number" min="0.001" max="5" step="0.01" placeholder="v_norm" title="本次下发速度 v_norm rad/s" /></label>
+          </div>
+          <div class="btn-row wrap">
+            <button id="btnPoseRead" onclick="readPoseToForm()">读取当前</button>
+            <button id="btnPoseSend" class="primary" onclick="sendPose()">下发</button>
+            <button id="btnCopyJoints" onclick="copyArmJoints()">复制关节</button>
+            <button id="btnCopyPose" onclick="copyArmPose()">复制位姿</button>
+          </div>
+          <div id="poseStat" class="stat-line">下发: —</div>
+        </div>
       </div>
-      <div class="row">
-        <button id="btnArmOn" onclick="armOn()">Arm</button>
-        <button id="btnArmOff" onclick="armOff()">Disarm</button>
-        <button id="btnArmStop" class="danger" onclick="armStop()">Stop</button>
+
+      <div class="sect">
+        <h2 class="sect-h">矩阵走位 <span class="tag">相对当前位姿</span></h2>
+        <p class="hint">平移网格 × 姿态网格（xyz × rpy）</p>
+        <div class="fields cols-4">
+          <label class="field"><span>Nx</span>
+            <input id="mxNx" type="number" min="1" max="11" value="3" title="Nx" /></label>
+          <label class="field"><span>Ny</span>
+            <input id="mxNy" type="number" min="1" max="11" value="3" title="Ny" /></label>
+          <label class="field"><span>Nz ≥3</span>
+            <input id="mxNz" type="number" min="1" max="5" value="3" title="Nz（须≥3，避免近平面）" /></label>
+          <label class="field"><span>Δxyz mm</span>
+            <input id="mxStep" type="number" min="1" max="300" step="1" value="50" title="Δxyz mm" /></label>
+        </div>
+        <div class="fields cols-4">
+          <label class="field"><span>Nrx</span>
+            <input id="mxNrx" type="number" min="1" max="7" value="1" title="Nrx" /></label>
+          <label class="field"><span>Nry</span>
+            <input id="mxNry" type="number" min="1" max="7" value="3" title="Nry" /></label>
+          <label class="field"><span>Nrz ≥3</span>
+            <input id="mxNrz" type="number" min="1" max="7" value="3" title="Nrz（须≥3）" /></label>
+          <label class="field"><span>Δrpy °</span>
+            <input id="mxStepR" type="number" min="0" max="45" step="1" value="20" title="Δrpy °" /></label>
+        </div>
+        <div class="btn-row wrap">
+          <button id="btnMxPlan" onclick="matrixPlan()">生成点位</button>
+          <button id="btnMxStart" class="primary" onclick="matrixStart()">开始走位</button>
+          <button id="btnMxRun" onclick="matrixPlanAndStart()">生成并走位</button>
+          <button id="btnMxStop" class="danger" onclick="matrixStop()">停止</button>
+        </div>
+        <div class="subblock">
+          <div class="subhead">预设 · N / 步进 / 跨度 / 中心</div>
+          <div class="row">
+            <input id="mxPresetName" placeholder="预设名 如 eth_165554" />
+            <button id="btnMxSave" onclick="matrixPresetSave()">保存</button>
+          </div>
+          <div class="row">
+            <select id="mxPresetList" title="已保存预设"></select>
+            <button id="btnMxLoad" onclick="matrixPresetLoad()">加载</button>
+            <button id="btnMxRefreshPresets" onclick="refreshMatrixPresets()" title="刷新列表">↻</button>
+          </div>
+        </div>
+        <div id="matrixStat" class="stat-line">矩阵: —</div>
       </div>
-      <div id="armState" class="meta">臂状态: —</div>
-      <p class="hint">点动幅度 / 单步最大Δq</p>
-      <div class="row">
-        <input id="jogJointDeg" type="number" min="0.01" max="30" step="0.1" title="关节步进 °" />
-        <span class="hint">°关节</span>
-        <input id="jogCartMm" type="number" min="0.01" max="100" step="0.5" title="平移步进 mm" />
-        <span class="hint">mm平移</span>
-      </div>
-      <div class="row">
-        <input id="jogCartDeg" type="number" min="0.01" max="30" step="0.1" title="姿态步进 °" />
-        <span class="hint">°姿态</span>
-        <select id="cartFrame" title="笛卡尔参考系" style="flex:0 0 auto;width:88px">
-          <option value="flange">flange</option>
-          <option value="tcp">tcp</option>
-        </select>
-        <input id="maxDeltaDeg" type="number" min="0.01" max="45" step="0.5" title="单步最大Δq °" style="width:4.5em" />
-        <span class="hint">°maxΔ</span>
-        <button class="primary" onclick="saveJogSteps()">应用</button>
-      </div>
-      <div class="row">
-        <input id="vNorm" type="number" min="0.001" max="5" step="0.01" title="关节速度 v_norm rad/s" style="width:5em" />
-        <span class="hint">rad/s 速度</span>
-        <input id="tMin" type="number" min="0.02" max="30" step="0.05" title="t_min s" style="width:4em" />
-        <span class="hint">t_min</span>
-        <input id="tMax" type="number" min="0.1" max="30" step="1" title="t_max s" style="width:4em" />
-        <span class="hint">t_max</span>
-      </div>
-      <p class="hint">关节点动</p>
-      <div class="grid-jog" id="jointJog"></div>
-      <p class="hint">笛卡尔点动</p>
-      <div class="grid-jog" id="cartJog"></div>
-      <h2>矩阵走位</h2>
-      <p class="hint">xyz×rpy 相对当前位姿：平移网格 × 姿态网格</p>
-      <div class="row">
-        <span class="hint">xyz</span>
-        <input id="mxNx" type="number" min="1" max="11" value="3" title="Nx" style="width:3em" />
-        <input id="mxNy" type="number" min="1" max="11" value="3" title="Ny" style="width:3em" />
-        <input id="mxNz" type="number" min="1" max="5" value="1" title="Nz" style="width:3em" />
-        <input id="mxStep" type="number" min="1" max="300" step="1" value="50" title="Δxyz mm" style="width:4em" />
-        <span class="hint">mm</span>
-      </div>
-      <div class="row">
-        <span class="hint">rpy</span>
-        <input id="mxNrx" type="number" min="1" max="7" value="1" title="Nrx" style="width:3em" />
-        <input id="mxNry" type="number" min="1" max="7" value="3" title="Nry" style="width:3em" />
-        <input id="mxNrz" type="number" min="1" max="7" value="1" title="Nrz" style="width:3em" />
-        <input id="mxStepR" type="number" min="0" max="45" step="1" value="12" title="Δrpy °" style="width:4em" />
-        <span class="hint">°</span>
-      </div>
-      <div class="row">
-        <button id="btnMxPlan" onclick="matrixPlan()">生成点位</button>
-        <button id="btnMxStart" class="primary" onclick="matrixStart()">开始走位</button>
-        <button id="btnMxRun" onclick="matrixPlanAndStart()">生成并走位</button>
-        <button id="btnMxStop" class="danger" onclick="matrixStop()">停止</button>
-      </div>
-      <div id="matrixStat" class="meta">矩阵: —</div>
     </section>
 
     <section class="card preview-card">
@@ -430,6 +642,25 @@
         <span class="pill" id="pillLive">实时</span>
       </div>
       <div id="liveStat" class="meta">标定: —</div>
+      <div class="subblock">
+        <div class="subhead">收敛条件 · 窗口直径</div>
+        <p class="hint">最近 N 次解两两最大 Δ ≤ 阈值，且样本数够，才判定收敛</p>
+        <div class="fields cols-2">
+          <label class="field"><span>最少样本</span>
+            <input id="convMinSamples" type="number" min="3" max="1000" step="1" title="min_samples" /></label>
+          <label class="field"><span>稳定次数 N</span>
+            <input id="convStable" type="number" min="2" max="50" step="1" title="stable_count · 窗口长度" /></label>
+          <label class="field"><span>Δt 上限 mm</span>
+            <input id="convDt" type="number" min="0.01" max="100" step="0.1" title="max_delta_t_mm" /></label>
+          <label class="field"><span>ΔR 上限 °</span>
+            <input id="convDr" type="number" min="0.01" max="30" step="0.1" title="max_delta_R_deg" /></label>
+          <label class="field"><span>每 N 样重算</span>
+            <input id="convRecompute" type="number" min="1" max="100" step="1" title="recompute_every_n" /></label>
+          <div class="field-actions">
+            <button class="primary" style="width:100%" onclick="saveConvergence()">应用收敛</button>
+          </div>
+        </div>
+      </div>
       <h2>离线 / tcp</h2>
       <div class="row">
         <input id="offlinePath" placeholder="session 目录" />
@@ -541,6 +772,11 @@
       setEn('btnArmOff', arm && armed);
       setEn('btnArmStop', arm);
       document.querySelectorAll('.jogBtn').forEach(b => { b.disabled = !(arm && armed); });
+      const moveBusy = !!lastHealth.move_pose_running;
+      setEn('btnPoseRead', arm && !moveBusy);
+      setEn('btnPoseSend', arm && armed && !moveBusy);
+      setEn('btnCopyJoints', arm);
+      setEn('btnCopyPose', arm);
       setEn('btnRecStart', cam && arm && !rec);
       setEn('btnRecStop', rec);
       setEn('liveCb', cam && !multi);
@@ -596,6 +832,29 @@
             if (Array.isArray(st.joints_rad)) vizCall(matrixViz, 'setJoints', st.joints_rad);
             if (Array.isArray(st.pose_xyzrpy)) vizCall(matrixViz, 'setLivePose', st.pose_xyzrpy);
           }
+          if (st.move_pose_running) {
+            lastHealth.move_pose_running = true;
+            document.getElementById('poseStat').textContent = '下发中…（Stop 可中止）';
+            setEn('btnPoseSend', false);
+          }
+        }
+      } catch {}
+      try {
+        const mp = await api('/api/arm/move_pose/status');
+        if (mp.running) {
+          lastHealth.move_pose_running = true;
+          document.getElementById('poseStat').textContent = '下发中…（Stop 可中止）';
+          setEn('btnPoseSend', false);
+        } else if (lastHealth.move_pose_running) {
+          lastHealth.move_pose_running = false;
+          if (mp.last_error) {
+            document.getElementById('poseStat').textContent = '错误: ' + mp.last_error;
+            log('下发结束: ' + mp.last_error);
+          } else {
+            document.getElementById('poseStat').textContent = '下发完成';
+            log('下发位姿完成');
+          }
+          updateActionState(lastHealth);
         }
       } catch {}
       try {
@@ -695,6 +954,100 @@
     async function armOn() { await api('/api/arm/arm', {method:'POST'}); log('Arm'); refreshHealth(); }
     async function armOff() { await api('/api/arm/disarm', {method:'POST'}); log('Disarm'); refreshHealth(); }
     async function armStop() { await api('/api/arm/stop', {method:'POST'}); log('Stop'); refreshHealth(); }
+    function poseToCsv(xyzrpy) {
+      if (!Array.isArray(xyzrpy) || xyzrpy.length < 6) return '';
+      const x = (xyzrpy[0] * 1000).toFixed(1);
+      const y = (xyzrpy[1] * 1000).toFixed(1);
+      const z = (xyzrpy[2] * 1000).toFixed(1);
+      const rx = (xyzrpy[3] * 180 / Math.PI).toFixed(2);
+      const ry = (xyzrpy[4] * 180 / Math.PI).toFixed(2);
+      const rz = (xyzrpy[5] * 180 / Math.PI).toFixed(2);
+      return `${x}, ${y}, ${z}, ${rx}, ${ry}, ${rz}`;
+    }
+    function fillPoseForm(xyzrpy) {
+      const csv = poseToCsv(xyzrpy);
+      if (!csv) return;
+      document.getElementById('poseCsv').value = csv;
+    }
+    async function readPoseToForm() {
+      try {
+        const st = await api('/api/arm/state');
+        if (!st.connected) { log('ERR 臂未连接'); return; }
+        const frame = document.getElementById('poseFrame').value || 'flange';
+        const pose = frame === 'tcp' ? st.pose_xyzrpy_tcp : st.pose_xyzrpy;
+        if (!pose) { log('ERR 无位姿可读'); return; }
+        fillPoseForm(pose);
+        document.getElementById('poseStat').textContent = `已读入当前 ${frame}`;
+        log(`已读取当前 ${frame} 位姿到下发框`);
+      } catch (e) { log('ERR 读取位姿: ' + e.message); }
+    }
+    async function sendPose() {
+      try {
+        const csv = (document.getElementById('poseCsv').value || '').trim();
+        if (!csv) {
+          log('ERR 请粘贴位姿 CSV：x,y,z,rx,ry,rz（mm / °）');
+          return;
+        }
+        const body = {
+          pose_mm_deg: csv,
+          frame: document.getElementById('poseFrame').value || 'flange',
+        };
+        const vEl = document.getElementById('poseVNorm');
+        if (vEl && vEl.value !== '') body.v_norm_rad_s = +vEl.value;
+        else {
+          const g = document.getElementById('vNorm');
+          if (g && g.value !== '') body.v_norm_rad_s = +g.value;
+        }
+        const r = await api('/api/arm/move_pose', {method:'POST', body: JSON.stringify(body)});
+        document.getElementById('poseStat').textContent =
+          `下发中 ${body.frame} · v=${r.v_norm_rad_s} rad/s`;
+        log(`下发位姿 ${body.frame} · ${csv}`);
+        setEn('btnPoseSend', false);
+        refreshHealth();
+      } catch (e) {
+        log('ERR 下发: ' + e.message);
+        document.getElementById('poseStat').textContent = '错误: ' + e.message;
+      }
+    }
+    async function copyText(text, okMsg) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+        }
+        log(okMsg);
+        document.getElementById('poseStat').textContent = okMsg;
+      } catch (e) {
+        log('ERR 复制失败: ' + e.message + ' · 内容: ' + text);
+      }
+    }
+    async function copyArmJoints() {
+      try {
+        const st = await api('/api/arm/state');
+        if (!st.connected || !Array.isArray(st.joints_rad) || st.joints_rad.length < 6) {
+          log('ERR 无关节可读');
+          return;
+        }
+        const deg = st.joints_rad.slice(0, 6).map(x => (x * 180 / Math.PI).toFixed(3));
+        await copyText(deg.join(', '), '已复制关节 (°)');
+      } catch (e) { log('ERR 复制关节: ' + e.message); }
+    }
+    async function copyArmPose() {
+      try {
+        const st = await api('/api/arm/state');
+        if (!st.connected) { log('ERR 臂未连接'); return; }
+        const frame = document.getElementById('poseFrame').value || 'flange';
+        const pose = frame === 'tcp' ? st.pose_xyzrpy_tcp : st.pose_xyzrpy;
+        if (!Array.isArray(pose) || pose.length < 6) { log('ERR 无位姿可读'); return; }
+        await copyText(poseToCsv(pose), `已复制位姿 (${frame}, mm/°)`);
+      } catch (e) { log('ERR 复制位姿: ' + e.message); }
+    }
     async function toggleLive() {
       const on = document.getElementById('liveCb').checked;
       try {
@@ -853,25 +1206,144 @@
         requestAnimationFrame(() => vizCall(viz, 'resize'));
       }
     }
+    let lastMatrixSeed = null;
+    function readMatrixParamsBody() {
+      const step = (+document.getElementById('mxStep').value) / 1000;
+      const stepR = +document.getElementById('mxStepR').value;
+      return {
+        nx: +document.getElementById('mxNx').value,
+        ny: +document.getElementById('mxNy').value,
+        nz: +document.getElementById('mxNz').value,
+        step_x_m: step, step_y_m: step, step_z_m: step,
+        n_rx: +document.getElementById('mxNrx').value,
+        n_ry: +document.getElementById('mxNry').value,
+        n_rz: +document.getElementById('mxNrz').value,
+        step_rx_deg: stepR, step_ry_deg: stepR, step_rz_deg: stepR,
+        snake: true, dwell_s: 0.8, frame: 'flange',
+      };
+    }
+    function applyMatrixParamsToForm(p) {
+      if (!p) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+      set('mxNx', p.nx); set('mxNy', p.ny); set('mxNz', p.nz);
+      if (p.step_x_m != null) set('mxStep', Math.round(Number(p.step_x_m) * 1000));
+      set('mxNrx', p.n_rx); set('mxNry', p.n_ry); set('mxNrz', p.n_rz);
+      if (p.step_ry_deg != null) set('mxStepR', p.step_ry_deg);
+    }
+    function formatMatrixStat(s, seed) {
+      let msg =
+        `点位 ${s.n} | xyz ${(s.x_span_m*1000).toFixed(0)}/${(s.y_span_m*1000).toFixed(0)}/${(s.z_span_m*1000).toFixed(0)} mm` +
+        ` | rpy ${(s.rx_span_deg||0).toFixed(1)}/${(s.ry_span_deg||0).toFixed(1)}/${(s.rz_span_deg||0).toFixed(1)} °`;
+      if (Array.isArray(seed) && seed.length >= 6) {
+        msg += ` | 中心 xyz=${(seed[0]*1000).toFixed(0)},${(seed[1]*1000).toFixed(0)},${(seed[2]*1000).toFixed(0)}mm` +
+          ` rpy=${(seed[3]*180/Math.PI).toFixed(1)},${(seed[4]*180/Math.PI).toFixed(1)},${(seed[5]*180/Math.PI).toFixed(1)}°`;
+      }
+      return msg + ' — 可开始走位';
+    }
+    async function refreshMatrixPresets() {
+      try {
+        const r = await api('/api/matrix/presets');
+        const sel = document.getElementById('mxPresetList');
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = '';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = r.presets.length ? '选择预设…' : '（无预设）';
+        sel.appendChild(empty);
+        for (const p of r.presets) {
+          const opt = document.createElement('option');
+          opt.value = p.file || p.name;
+          const sp = p.spans_mm_deg || {};
+          opt.textContent = `${p.name}` +
+            (sp.x_span_mm != null
+              ? ` · xyz${Math.round(sp.x_span_mm)}/${Math.round(sp.y_span_mm)}/${Math.round(sp.z_span_mm)}`
+              : '');
+          sel.appendChild(opt);
+        }
+        if (cur) sel.value = cur;
+      } catch (e) {
+        log('ERR 预设列表: ' + e.message);
+      }
+    }
+    async function matrixPresetSave() {
+      try {
+        const name = (document.getElementById('mxPresetName').value || '').trim();
+        if (!name) { log('ERR 请填写预设名'); return; }
+        const body = { name, ...readMatrixParamsBody() };
+        if (Array.isArray(lastMatrixSeed) && lastMatrixSeed.length >= 6) {
+          body.seed_xyzrpy = lastMatrixSeed;
+        }
+        const r = await api('/api/matrix/presets/save', {method:'POST', body: JSON.stringify(body)});
+        const pr = r.preset || {};
+        const sp = pr.spans_mm_deg || {};
+        log(`矩阵设置已保存 ${r.file || name}` +
+          (sp.x_span_mm != null
+            ? ` · 跨度 xyz ${Math.round(sp.x_span_mm)}/${Math.round(sp.y_span_mm)}/${Math.round(sp.z_span_mm)} mm`
+            : '') +
+          (Array.isArray(pr.seed_xyzrpy_mm_deg)
+            ? ` · 中心 ${(pr.seed_xyzrpy_mm_deg.slice(0,3).map(x=>x.toFixed(0))).join(',')} mm`
+            : ''));
+        document.getElementById('matrixStat').textContent = `已保存预设 ${r.file || name}`;
+        await refreshMatrixPresets();
+        const sel = document.getElementById('mxPresetList');
+        if (sel && r.file) sel.value = r.file;
+      } catch (e) {
+        log('ERR 保存矩阵设置: ' + e.message);
+      }
+    }
+    async function matrixPresetLoad() {
+      try {
+        const name = (document.getElementById('mxPresetList').value
+          || document.getElementById('mxPresetName').value || '').trim();
+        if (!name) { log('ERR 请选择或填写要加载的预设'); return; }
+        const r = await api('/api/matrix/presets/load', {
+          method:'POST',
+          body: JSON.stringify({ name, replan: true }),
+        });
+        applyMatrixParamsToForm(r.params);
+        lastMatrixSeed = r.seed_xyzrpy || null;
+        if (r.preset && r.preset.name) {
+          document.getElementById('mxPresetName').value = r.preset.name;
+        }
+        // Prefill pose-send form with preset center; do NOT auto-send.
+        if (r.params && r.params.frame) {
+          document.getElementById('poseFrame').value =
+            r.params.frame === 'tcp' ? 'tcp' : 'flange';
+        }
+        if (Array.isArray(r.seed_xyzrpy) && r.seed_xyzrpy.length >= 6) {
+          fillPoseForm(r.seed_xyzrpy);
+          const fr = document.getElementById('poseFrame').value || 'flange';
+          document.getElementById('poseStat').textContent =
+            `已从预设填入中心位姿 (${fr}) · 等待点击「下发」`;
+        }
+        const s = r.summary || {};
+        if (s.n) {
+          document.getElementById('matrixStat').textContent = formatMatrixStat(s, r.seed_xyzrpy);
+        } else {
+          document.getElementById('matrixStat').textContent = `已加载 ${r.file || name}`;
+        }
+        log(`矩阵设置已加载 ${r.file || name}` +
+          (r.replanned ? ' · 已按保存中心重生成点位' : '') +
+          (Array.isArray(r.seed_xyzrpy) ? ' · 中心已回填到下发框' : ''));
+        switchViewTab('viz');
+        const viz = ensureMatrixViz();
+        vizCall(viz, 'setWaypoints', r.waypoints || [], r.seed_xyzrpy || null);
+        try {
+          const st = await api('/api/arm/state');
+          if (st && Array.isArray(st.joints_rad)) vizCall(viz, 'setJoints', st.joints_rad);
+        } catch (_) {}
+      } catch (e) {
+        log('ERR 加载矩阵设置: ' + e.message);
+        document.getElementById('matrixStat').textContent = '错误: ' + e.message;
+      }
+    }
     async function matrixPlan() {
       try {
-        const step = (+document.getElementById('mxStep').value) / 1000;
-        const stepR = +document.getElementById('mxStepR').value;
-        const r = await api('/api/matrix/plan', {method:'POST', body: JSON.stringify({
-          nx: +document.getElementById('mxNx').value,
-          ny: +document.getElementById('mxNy').value,
-          nz: +document.getElementById('mxNz').value,
-          step_x_m: step, step_y_m: step, step_z_m: step,
-          n_rx: +document.getElementById('mxNrx').value,
-          n_ry: +document.getElementById('mxNry').value,
-          n_rz: +document.getElementById('mxNrz').value,
-          step_rx_deg: stepR, step_ry_deg: stepR, step_rz_deg: stepR,
-          snake: true, dwell_s: 0.8, frame: 'flange',
-        })});
+        const r = await api('/api/matrix/plan', {method:'POST', body: JSON.stringify(readMatrixParamsBody())});
+        lastMatrixSeed = r.seed_xyzrpy || null;
         const s = r.summary;
-        document.getElementById('matrixStat').textContent =
-          `点位 ${s.n} | xyz ${ (s.x_span_m*1000).toFixed(0)}/${(s.y_span_m*1000).toFixed(0)}/${(s.z_span_m*1000).toFixed(0)} mm` +
-          ` | rpy ${ (s.rx_span_deg||0).toFixed(1)}/${(s.ry_span_deg||0).toFixed(1)}/${(s.rz_span_deg||0).toFixed(1)} ° — 可开始走位`;
+        document.getElementById('matrixStat').textContent = formatMatrixStat(s, r.seed_xyzrpy);
         log(`矩阵生成 ${s.n} 点 (含姿态)`);
         switchViewTab('viz');
         const viz = ensureMatrixViz();
@@ -949,6 +1421,40 @@
       const r = await api('/api/jog_steps', {method:'POST', body: JSON.stringify(body)});
       log(`步进 关节${r.jog_joint_step_deg}° 平移${(r.jog_cart_step_m*1000).toFixed(2)}mm 姿态${r.jog_cart_step_deg}° | maxΔ=${r.max_delta_deg}° v=${r.v_norm_rad_s} frame=${r.cart_frame}`);
     }
+    function fillConvergence(cv) {
+      if (!cv) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+      set('convMinSamples', cv.min_samples);
+      set('convStable', cv.stable_count);
+      set('convDt', cv.max_delta_t_mm);
+      set('convDr', cv.max_delta_R_deg);
+      set('convRecompute', cv.recompute_every_n);
+    }
+    async function saveConvergence() {
+      try {
+        const body = {
+          min_samples: +document.getElementById('convMinSamples').value,
+          stable_count: +document.getElementById('convStable').value,
+          max_delta_t_mm: +document.getElementById('convDt').value,
+          max_delta_R_deg: +document.getElementById('convDr').value,
+          recompute_every_n: +document.getElementById('convRecompute').value,
+        };
+        const r = await api('/api/convergence', {method:'POST', body: JSON.stringify(body)});
+        fillConvergence(r.convergence);
+        const c = r.convergence;
+        log(`收敛条件: 样本≥${c.min_samples} 窗口N=${c.stable_count} Δt≤${c.max_delta_t_mm}mm ΔR≤${c.max_delta_R_deg}° 每${c.recompute_every_n}样重算`);
+      } catch (e) {
+        log('ERR 收敛条件: ' + e.message);
+      }
+    }
+    function fillMatrixPath(mp) {
+      if (!mp) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+      set('mxNx', mp.nx); set('mxNy', mp.ny); set('mxNz', mp.nz);
+      if (mp.step_x_m != null) set('mxStep', Math.round(Number(mp.step_x_m) * 1000));
+      set('mxNrx', mp.n_rx); set('mxNry', mp.n_ry); set('mxNrz', mp.n_rz);
+      if (mp.step_ry_deg != null) set('mxStepR', mp.step_ry_deg);
+    }
     function fillJogSteps(arm) {
       document.getElementById('jogJointDeg').value = arm.jog_joint_step_deg;
       document.getElementById('jogCartMm').value = +(arm.jog_cart_step_m * 1000).toFixed(3);
@@ -961,9 +1467,8 @@
     }
     function syncBoardVisibility() {
       const aruco = document.getElementById('boardType').value === 'aruco';
-      document.getElementById('charucoRow').style.display = aruco ? 'none' : 'flex';
-      document.getElementById('markerId').style.display = aruco ? '' : 'none';
-      document.getElementById('markerIdHint').style.display = aruco ? '' : 'none';
+      document.getElementById('charucoRow').style.display = aruco ? 'none' : 'grid';
+      document.getElementById('markerIdField').style.display = aruco ? 'flex' : 'none';
       document.getElementById('boardHint').textContent = aruco
         ? '单 ArUco：字典 + marker id + 码边长(mm)'
         : 'ChArUco：格数 × 格边长 + 码边长（码须小于格）';
@@ -1068,6 +1573,12 @@
       document.getElementById('tcpZ').value = c.tcp_xyz[2];
       fillJogSteps(c.arm);
       fillAruco(c.aruco);
+      fillMatrixPath(c.matrix_path);
+      fillConvergence(c.convergence);
+      if (c.arm && c.arm.v_norm_rad_s != null) {
+        document.getElementById('poseVNorm').placeholder = `v / rad/s (${c.arm.v_norm_rad_s})`;
+      }
+      refreshMatrixPresets();
       document.getElementById('boardType').onchange = syncBoardVisibility;
       if (c.handeye && c.handeye.setup) {
         document.getElementById('handeyeSetup').value = c.handeye.setup;

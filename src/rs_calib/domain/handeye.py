@@ -287,6 +287,72 @@ def _axxb_pose_residual(A: list[np.ndarray], B: list[np.ndarray], X: np.ndarray)
     return err / max(1, len(A))
 
 
+# Tabletop/arm-cell prior: OpenCV Tsai can return kilometre-scale t when motions
+# are near-planar; treat those as failure so dual/live can fall back to native.
+# Good ETH sessions in this repo sit near ||t||≈1.1m; >3m is already nonsensical here.
+_MAX_HANDEYE_TRANSLATION_M = 3.0
+
+
+def _is_degenerate_handeye_T(T: Optional[np.ndarray]) -> bool:
+    """True for OpenCV failure modes (R≈I t≈0, non-finite, or absurd ||t||)."""
+    if T is None:
+        return True
+    T = np.asarray(T, dtype=np.float64)
+    if T.shape != (4, 4) or not np.isfinite(T).all():
+        return True
+    tnorm = float(np.linalg.norm(T[:3, 3]))
+    ang = float(np.linalg.norm(_rotvec(T[:3, :3])))
+    # calibrateHandEye logs an error then returns identity when motions are too small.
+    if tnorm < 1e-6 and ang < np.deg2rad(1.0):
+        return True
+    # Blow-up (seen: ||t||≈12 km on near-planar ETH) — not a valid cell extrinsic.
+    if tnorm > _MAX_HANDEYE_TRANSLATION_M:
+        return True
+    return False
+
+
+def _sample_motion_span(
+    samples: Sequence[CalibSample],
+) -> dict[str, float]:
+    """Flange translation/rotation spans used to flag ill-conditioned HandEye data."""
+    if not samples:
+        return {"t_span_m": 0.0, "r_span_deg": 0.0}
+    ts = np.stack([np.asarray(s.T_base_flange, dtype=np.float64)[:3, 3] for s in samples])
+    t_span = float(np.linalg.norm(ts.max(axis=0) - ts.min(axis=0)))
+    # Max pairwise rotation angle among flange poses (cap pairs for speed).
+    Rs = [np.asarray(s.T_base_flange, dtype=np.float64)[:3, :3] for s in samples]
+    n = len(Rs)
+    step = max(1, n // 24)
+    idxs = list(range(0, n, step))
+    if idxs[-1] != n - 1:
+        idxs.append(n - 1)
+    r_max = 0.0
+    for a in range(len(idxs)):
+        for b in range(a + 1, len(idxs)):
+            Rrel = Rs[idxs[a]].T @ Rs[idxs[b]]
+            ang = float(np.linalg.norm(_rotvec(Rrel)) * 180.0 / np.pi)
+            if ang > r_max:
+                r_max = ang
+    return {"t_span_m": t_span, "r_span_deg": r_max}
+
+
+def _axxb_residual_for_samples(
+    samples: Sequence[CalibSample],
+    X: np.ndarray,
+    *,
+    setup: SetupName,
+) -> float:
+    A, B = _motion_pairs_axxb(samples, setup=setup)
+    Af, Bf = _filter_pairs(A, B, min_rot_deg=5.0)
+    if len(Af) < 2:
+        Af, Bf = _filter_pairs(A, B, min_rot_deg=1.5)
+    if len(Af) < 1:
+        Af, Bf = A, B
+    if len(Af) < 1:
+        return float("inf")
+    return _axxb_pose_residual(Af, Bf, X)
+
+
 def _resolve_calibrate_handeye() -> Optional[Callable]:
     """OpenCV 4.x exposes cv2.calibrateHandEye; some OpenCV 5 wheels omit it."""
     try:
@@ -352,7 +418,11 @@ def _opencv_calibrate(
         )
     except Exception:  # noqa: BLE001
         return None
-    return _pack_T(_orthonormalize_R(R_out), t_out)
+    T = _pack_T(_orthonormalize_R(R_out), t_out)
+    # OpenCV Tsai often returns I,t=0 (and only logs) when motions are insufficient.
+    if _is_degenerate_handeye_T(T):
+        return None
+    return T
 
 
 def _native_calibrate(
@@ -412,11 +482,16 @@ def align_extrinsic_to_ref(T_new: np.ndarray, T_ref: Optional[np.ndarray]) -> np
     """If HandEye flipped to a far SO(3) branch, keep the representative closer to ``T_ref``.
 
     Tries identity and 180° flips about object axes (common spurious HandEye modes).
+
+    Skips alignment when ``T_ref`` is degenerate (e.g. OpenCV failure → I): otherwise a
+    later good solve gets forcibly 180°-flipped toward garbage and locks the live chain.
     """
-    if T_ref is None:
+    if T_ref is None or _is_degenerate_handeye_T(T_ref):
         return T_new
     T_new = np.asarray(T_new, dtype=np.float64)
     T_ref = np.asarray(T_ref, dtype=np.float64)
+    if _is_degenerate_handeye_T(T_new):
+        return T_new
     best = T_new
     best_dr = se3_delta(T_ref, T_new)[1]
     if best_dr < 90.0:
@@ -542,9 +617,14 @@ def solve_handeye_dual(
 ) -> ExtrinsicsResult:
     """Run **OpenCV calibrateHandEye** and **native** solvers, keep both.
 
-    Primary result prefers OpenCV when available (official Tsai/Park/…).
+    Solves both **without** ``align_to`` first (so a bad prior cannot 180°-flip a
+    good OpenCV/native pair), then picks primary:
+
+    - Prefer OpenCV when valid and ΔR vs native < 90°
+    - If they disagree by ≥90° (or OpenCV failed / returned I), pick lower AX=XB residual
+    - Finally align the chosen primary to ``align_to`` when the ref is non-degenerate
+
     Native is always attached under ``metrics["dual"]`` with Δt/ΔR vs primary.
-    If OpenCV HandEye is missing, falls back to native-only and records a warning.
     """
     if len(samples) < 3:
         raise ValueError(f"need at least 3 samples, got {len(samples)}")
@@ -553,12 +633,13 @@ def solve_handeye_dual(
         raise ValueError(f"unknown handeye method: {method}")
     setup_n = normalize_setup(setup)
 
+    # Critical: do not align each backend independently to a possibly-corrupt prior.
     native = _solve_once(
         samples,
         method_key=key,
         setup_n=setup_n,
         backend="native",
-        align_to=align_to,
+        align_to=None,
     )
 
     opencv_res: Optional[ExtrinsicsResult] = None
@@ -570,31 +651,111 @@ def solve_handeye_dual(
                 method_key=key,
                 setup_n=setup_n,
                 backend="opencv",
-                align_to=align_to,
+                align_to=None,
             )
+            if opencv_res is not None and _is_degenerate_handeye_T(opencv_res.primary_T()):
+                tnorm = float(np.linalg.norm(opencv_res.primary_T()[:3, 3]))
+                opencv_err = (
+                    f"OpenCV HandEye returned implausible pose (||t||={tnorm:.3f}m; "
+                    "I/t=0 or blow-up from insufficient / near-planar motion)"
+                )
+                opencv_res = None
         except Exception as e:  # noqa: BLE001
             opencv_err = str(e)
+            opencv_res = None
     else:
         st = opencv_handeye_status()
         opencv_err = str(st.get("detail") or "calibrateHandEye unavailable")
 
+    span = _sample_motion_span(samples)
+    span_warn = None
+    if span["r_span_deg"] < 20.0 or span["t_span_m"] < 0.08:
+        span_warn = (
+            f"运动覆盖不足: 法兰旋转跨度≈{span['r_span_deg']:.1f}° "
+            f"平移跨度≈{span['t_span_m']*1000:.0f}mm（建议旋转≥25°且 XYZ 拉开）"
+        )
+
     if opencv_res is None:
+        primary = native
+        if not _is_degenerate_handeye_T(align_to):
+            T_al = align_extrinsic_to_ref(primary.primary_T(), align_to)
+            if not _is_degenerate_handeye_T(T_al):
+                primary = _pack_result(
+                    T_al,
+                    setup_n=setup_n,
+                    method_label=primary.method,
+                    n_samples=primary.n_samples,
+                    indices=list(primary.used_indices),
+                    metrics=dict(primary.metrics or {}),
+                )
         dual = {
             "enabled": True,
             "primary": "native",
             "opencv": None,
             "native_method": native.method,
             "opencv_error": opencv_err,
-            "warning": "双算法：OpenCV HandEye 不可用，仅保留原生解",
+            "motion_span": span,
+            "warning": "双算法：OpenCV HandEye 不可用/失败，仅保留原生解"
+            + (f"；{span_warn}" if span_warn else ""),
         }
-        native.metrics = {**native.metrics, "dual": dual}
-        native.method = f"DUAL_NO_CV→{native.method}"
-        return native
+        primary.metrics = {**primary.metrics, "dual": dual}
+        primary.method = f"DUAL_NO_CV→{primary.method}"
+        return primary
+
+    dt, dR = se3_delta(opencv_res.primary_T(), native.primary_T())
+    pick = "opencv"
+    warning = span_warn
+    # Prefer residual arbitration when backends disagree in rotation OR translation.
+    # (Bug: session_20261026_212137 had Δt≈1m / ΔR≈3° and still blindly picked OpenCV.)
+    if dR >= 90.0 or dt >= 50.0:
+        r_cv = _axxb_residual_for_samples(samples, opencv_res.primary_T(), setup=setup_n)
+        r_nat = _axxb_residual_for_samples(samples, native.primary_T(), setup=setup_n)
+        t_cv = float(np.linalg.norm(opencv_res.primary_T()[:3, 3]))
+        t_nat = float(np.linalg.norm(native.primary_T()[:3, 3]))
+        # If residuals are close, prefer the more geometrically plausible ||t||.
+        if r_nat < r_cv * 0.95:
+            pick = "native"
+        elif r_cv < r_nat * 0.95:
+            pick = "opencv"
+        else:
+            pick = "native" if t_nat < t_cv else "opencv"
+        msg = (
+            f"双算法分歧过大 Δt={dt:.1f}mm ΔR={dR:.1f}° → "
+            f"按 AX=XB/||t|| 选 {pick} (cv={r_cv:.4g}/{t_cv:.2f}m, nat={r_nat:.4g}/{t_nat:.2f}m)"
+        )
+        warning = f"{warning}；{msg}" if warning else msg
+
+    primary = opencv_res if pick == "opencv" else native
+    # If the preferred pick is still implausible but the other is not, switch.
+    other = native if pick == "opencv" else opencv_res
+    if _is_degenerate_handeye_T(primary.primary_T()) and not _is_degenerate_handeye_T(
+        other.primary_T()
+    ):
+        primary = other
+        pick = "native" if pick == "opencv" else "opencv"
+        msg = f"主解||t||异常，改用 {pick}"
+        warning = f"{warning}；{msg}" if warning else msg
+
+    if not _is_degenerate_handeye_T(align_to):
+        T_al = align_extrinsic_to_ref(primary.primary_T(), align_to)
+        # If alignment would jump toward a bad hemisphere while residual worsens a lot, keep raw.
+        if not _is_degenerate_handeye_T(T_al):
+            r0 = _axxb_residual_for_samples(samples, primary.primary_T(), setup=setup_n)
+            r1 = _axxb_residual_for_samples(samples, T_al, setup=setup_n)
+            if r1 <= r0 * 2.0 + 1e-9:
+                primary = _pack_result(
+                    T_al,
+                    setup_n=setup_n,
+                    method_label=primary.method,
+                    n_samples=primary.n_samples,
+                    indices=list(primary.used_indices),
+                    metrics=dict(primary.metrics or {}),
+                )
 
     dt, dR = se3_delta(opencv_res.primary_T(), native.primary_T())
     dual = {
         "enabled": True,
-        "primary": "opencv",
+        "primary": pick,
         "opencv_method": opencv_res.method,
         "native_method": native.method,
         "delta_t_mm": float(dt),
@@ -603,12 +764,13 @@ def solve_handeye_dual(
         "native_T": np.asarray(native.primary_T(), dtype=float).tolist(),
         "native_metrics": dict(native.metrics),
         "opencv_metrics": dict(opencv_res.metrics),
+        "motion_span": span,
     }
-    # Prefer OpenCV as the live/offline accepted extrinsic; native kept for compare.
-    primary = opencv_res
+    if warning:
+        dual["warning"] = warning
     primary.method = (
         f"DUAL(OPENCV={opencv_res.method}|NATIVE={native.method}"
-        f"|Δt={dt:.2f}mm|ΔR={dR:.2f}°)"
+        f"|Δt={dt:.2f}mm|ΔR={dR:.2f}°|pick={pick})"
     )
     primary.metrics = {**primary.metrics, "dual": dual}
     return primary

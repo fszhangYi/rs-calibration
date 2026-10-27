@@ -164,6 +164,11 @@ class LiveCalibService:
         elif self.last_result is not None:
             align_ref = self.last_result.primary_T()
         try:
+            from rs_calib.domain.handeye import _is_degenerate_handeye_T
+
+            # Never align to a prior OpenCV failure (I/t=0) — that 180°-flips later good solves.
+            if align_ref is not None and _is_degenerate_handeye_T(align_ref):
+                align_ref = None
             result = solve_handeye(
                 self.samples,
                 method=self.cfg.handeye.method,
@@ -171,6 +176,12 @@ class LiveCalibService:
                 align_to=align_ref,
                 dual_backends=bool(getattr(self.cfg.handeye, "dual_backends", False)),
             )
+            if _is_degenerate_handeye_T(result.primary_T()):
+                # Drop this sample's contribution and wait for more motion.
+                self.samples.pop()
+                self._joints.pop(sample.frame_idx, None)
+                self._last_kept = prev_kept
+                return
         except Exception:  # noqa: BLE001
             return
 
